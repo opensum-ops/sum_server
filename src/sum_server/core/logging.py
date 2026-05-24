@@ -2,6 +2,7 @@
 
 Production uses JSON output; dev uses console with colors.
 """
+
 from __future__ import annotations
 
 import logging
@@ -28,12 +29,16 @@ _REDACT_KEYS = frozenset(
     }
 )
 
-def _redact_processor(_logger: Any, _method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+
+def _redact_processor(
+    _logger: Any, _method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
     for key in list(event_dict.keys()):
         if key.lower() in _REDACT_KEYS:
             event_dict[key] = "***"
     return event_dict
-    
+
+
 def configure_logging(settings: Settings) -> None:
     level = getattr(logging, settings.log_level.upper(), logging.INFO)
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level)
@@ -52,17 +57,20 @@ def configure_logging(settings: Settings) -> None:
         renderer = structlog.processors.JSONRenderer()
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
-    
+
     structlog.configure(
         processors=[*shared, renderer],
         wrapper_class=structlog.make_filtering_bound_logger(level),
         cache_logger_on_first_use=True,
     )
 
+
 class RequestIdMiddleware(BaseHTTPMiddleware):
     """Attach a request_id to structlog contextvars for every request."""
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(

@@ -1,10 +1,11 @@
 """Async SQLAlchemy engine, session factory, declarative ``Base``, and FastAPI dep."""
+
 from __future__ import annotations
 
 import datetime as dt
 import uuid
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, Any, ClassVar
 
 from fastapi import Depends
 from sqlalchemy import DateTime, MetaData
@@ -24,28 +25,33 @@ NAMING_CONVENTION = {
     "uq": "uq_%(table_name)s_%(column_0_N_name)s",
     "ck": "ck_%(table_name)s_%(constraint_name)s",
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-    "pk": "pk_%(table_name)s"
+    "pk": "pk_%(table_name)s",
 }
+
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
-    type_annotation_map = {dt.datetime: DateTime(timezone=True)}
+    type_annotation_map: ClassVar[dict[type, Any]] = {dt.datetime: DateTime(timezone=True)}
+
 
 class TimestampMixin:
     created_at: Mapped[dt.datetime] = mapped_column(
         default=lambda: dt.datetime.now(tz=dt.UTC), nullable=False
     )
-    updated_at: Mapped[dt.datetime] = mapped_column (
+    updated_at: Mapped[dt.datetime] = mapped_column(
         default=lambda: dt.datetime.now(tz=dt.UTC),
         onupdate=lambda: dt.datetime.now(tz=dt.UTC),
         nullable=False,
     )
 
+
 class IdMixin:
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
 
+
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
+
 
 def init_engine(database_url: str | None = None) -> AsyncEngine:
     """Create the async engine. Idempotent."""
@@ -63,10 +69,12 @@ def init_engine(database_url: str | None = None) -> AsyncEngine:
     _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
     return _engine
 
+
 def get_engine() -> AsyncEngine:
     if _engine is None:
         return init_engine()
     return _engine
+
 
 async def dispose_engine() -> None:
     global _engine, _sessionmaker
@@ -74,6 +82,7 @@ async def dispose_engine() -> None:
         await _engine.dispose()
     _engine = None
     _sessionmaker = None
+
 
 async def get_session() -> AsyncIterator[AsyncSession]:
     if _sessionmaker is None:
@@ -85,5 +94,6 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         except Exception:
             await session.rollback()
             raise
+
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]

@@ -1,4 +1,5 @@
 """UUID7 generation for sortable primary keys."""
+
 from __future__ import annotations
 
 import uuid
