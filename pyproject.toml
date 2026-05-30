@@ -59,6 +59,7 @@ ignore = ["S101"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106", "S311", "PLR2004"]
 "alembic/*" = ["E501"]
+"src/sum_server/**/models.py" = ["RUF012"]  # __mapper_args__ is a SQLAlchemy classmapper directive, not a per-instance mutable default
 
 [tool.mypy]
 python_version = "3.12"
