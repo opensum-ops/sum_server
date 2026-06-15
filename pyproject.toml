@@ -56,6 +56,11 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "B", "UP", "N", "S", "C4", "SIM", "RUF", "ASYNC", "PT"]
 ignore = ["S101"]
 
+[tool.ruff.lint.isort]
+# Pin the first-party root: not-yet-created sub-packages (forward-referenced
+# under TYPE_CHECKING) would otherwise be misclassified as third-party.
+known-first-party = ["sum_server"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106", "S311", "PLR2004"]
 "alembic/*" = ["E501"]
