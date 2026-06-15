@@ -1,4 +1,5 @@
 """Component model (polymorphic inventory via single table + ``kind`` discriminator)."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
     from sum_server.servers.models import Server
 
 COMPONENT_KINDS = ("disk", "nic", "cpu", "gpu", "memory")
+
 
 class Component(Base, IdMixin, TimestampMixin):
     __tablename__ = "components"
