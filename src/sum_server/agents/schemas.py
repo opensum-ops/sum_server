@@ -1,4 +1,5 @@
 """Agent schemas (enrollment, inventory ingest, job poll/pickup/result)."""
+
 from __future__ import annotations
 
 import datetime as dt

@@ -1,4 +1,5 @@
 """AgentEnrollment: one-time tokens that exchange for long-lived AgentTokens."""
+
 from __future__ import annotations
 
 import datetime as dt
