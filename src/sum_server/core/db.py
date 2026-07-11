@@ -16,9 +16,10 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.pool import NullPool
 
 from sum_server.core.ids import new_id
-from sum_server.settings import get_settings
+from sum_server.settings import Env, get_settings
 
 NAMING_CONVENTION = {
     "ix": "ix_%(table_name)s_%(column_0_N_name)s",
@@ -59,13 +60,17 @@ def init_engine(database_url: str | None = None) -> AsyncEngine:
     if _engine is not None:
         return _engine
     url = database_url or get_settings().database_url
-    _engine = create_async_engine(
-        url,
-        pool_size=10,
-        max_overflow=20,
-        pool_pre_ping=True,
-        future=True,
-    )
+    if get_settings().env is Env.test:
+        # NullPool: no pooled asyncpg connections to outlive per-test event loops.
+        _engine = create_async_engine(url, poolclass=NullPool, future=True)
+    else:
+        _engine = create_async_engine(
+            url,
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True,
+            future=True,
+        )
     _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
     return _engine
 
