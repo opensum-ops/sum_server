@@ -142,7 +142,7 @@ async def list_servers_visible_to(
         stmt = stmt.where(Server.status == status_filter)
     if cursor is not None:
         stmt = stmt.where(
-            (Server.created_at, Server.id) < (cursor.ts, cursor.id)  # type: ignore[arg-type]
+            (Server.created_at, Server.id) < (cursor.ts, cursor.id)  # type: ignore[operator]
         )
     stmt = stmt.order_by(Server.created_at.desc(), Server.id.desc()).limit(limit + 1)
     return list((await session.execute(stmt)).scalars().all())
@@ -351,7 +351,7 @@ async def remove_user_owner(
             server_owner_users.c.user_id == user_id,
         )
     )
-    if result.rowcount:
+    if result.rowcount:  # type: ignore[attr-defined]
         await write_audit(
             session,
             action="server.remove_owner",
@@ -380,7 +380,7 @@ async def remove_team_owner(
             server_owner_teams.c.team_id == team_id,
         )
     )
-    if result.rowcount:
+    if result.rowcount:  # type: ignore[attr-defined]
         await write_audit(
             session,
             action="server.remove_owner",

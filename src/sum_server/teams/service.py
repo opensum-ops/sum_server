@@ -34,7 +34,7 @@ async def list_teams(session: AsyncSession, *, limit: int, cursor: Cursor | None
     stmt = select(Team)
     if cursor is not None:
         stmt = stmt.where(
-            (Team.created_at, Team.id) < (cursor.ts, cursor.id)  # type: ignore[arg-type]
+            (Team.created_at, Team.id) < (cursor.ts, cursor.id)  # type: ignore[operator]
         )
     stmt = stmt.order_by(Team.created_at.desc(), Team.id.desc()).limit(limit + 1)
     return list((await session.execute(stmt)).scalars().all())

@@ -49,7 +49,7 @@ async def list_users(
         stmt = stmt.where(User.deleted_at.is_(None))
     if cursor is not None:
         stmt = stmt.where(
-            (User.created_at, User.id) < (cursor.ts, cursor.id)  # type: ignore[arg-type]
+            (User.created_at, User.id) < (cursor.ts, cursor.id)  # type: ignore[operator]
         )
     stmt = stmt.order_by(User.created_at.desc(), User.id.desc()).limit(limit + 1)
     return list((await session.execute(stmt)).scalars().all())

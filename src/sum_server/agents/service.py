@@ -103,7 +103,7 @@ async def consume_enrollment(
         .where(AgentEnrollment.id == enr.id, AgentEnrollment.used_at.is_(None))
         .values(used_at=now)
     )
-    if (result.rowcount or 0) == 0:
+    if (result.rowcount or 0) == 0:  # type: ignore[attr-defined]
         raise EnrollmentError("enrollment was concurrently consumed")
 
     raw_agent_token, _ = await mint_agent_token(session, server_id=enr.server_id, ip=ip)
