@@ -51,7 +51,7 @@ async def list_audit(
     if cursor is not None:
         c: Cursor = cursor  # type: ignore[assignment]
         stmt = stmt.where(
-            (AuditEntry.ts, AuditEntry.id) < (c.ts, c.id)  # type: ignore[arg-type]
+            (AuditEntry.ts, AuditEntry.id) < (c.ts, c.id)  # type: ignore[operator]
         )
     stmt = stmt.order_by(AuditEntry.ts.desc(), AuditEntry.id.desc()).limit(limit + 1)
     rows = list((await session.execute(stmt)).scalars().all())

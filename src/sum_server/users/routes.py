@@ -39,8 +39,8 @@ async def list_users(
     rows = await svc.list_users(
         session,
         limit=limit,
-        cursor=cursor,
-        include_deleted=include_deleted,  # type: ignore[arg-type]
+        cursor=cursor,  # type: ignore[arg-type]
+        include_deleted=include_deleted,
     )
     has_more = len(rows) > limit
     items = rows[:limit]
