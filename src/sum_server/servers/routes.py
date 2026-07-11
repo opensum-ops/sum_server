@@ -38,14 +38,19 @@ def _parse_if_match(if_match: str | None) -> int | None:
 async def _require_owner_or_admin(
     server_id: uuid.UUID, actor_id: uuid.UUID, session: AsyncSession
 ) -> None:
-    user = await get_user(session, actor_id)
-    if user is not None and user.is_admin:
-        return
-    server = await svc.get_server(session, server_id)
-    if server is None:
-        raise NotFoundError("server not found")
-    if not await svc.user_can_read(session, server, actor_id):
-        raise ForbiddenError("not an owner")
+    try:
+        user = await get_user(session, actor_id)
+        if user is not None and user.is_admin:
+            return
+        server = await svc.get_server(session, server_id)
+        if server is None:
+            raise NotFoundError("server not found")
+        if not await svc.user_can_read(session, server, actor_id):
+            raise ForbiddenError("not an owner")
+    finally:
+        # Release the auto-begun read transaction so the handler owns its own
+        # ``async with session.begin()``.
+        await session.rollback()
 
 
 @router.post("", response_model=ServerResponse, status_code=status.HTTP_201_CREATED)
