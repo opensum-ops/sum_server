@@ -34,10 +34,15 @@ async def _is_org_admin(actor_id: uuid.UUID, session: AsyncSession) -> bool:
 async def _require_team_admin_or_org_admin(
     actor_id: uuid.UUID, team_id: uuid.UUID, session: AsyncSession
 ) -> None:
-    if await _is_org_admin(actor_id, session):
-        return
-    if await svc.is_team_admin(session, team_id=team_id, user_id=actor_id):
-        return
+    try:
+        if await _is_org_admin(actor_id, session):
+            return
+        if await svc.is_team_admin(session, team_id=team_id, user_id=actor_id):
+            return
+    finally:
+        # Release the auto-begun read transaction so the handler owns its own
+        # ``async with session.begin()``.
+        await session.rollback()
     raise ForbiddenError("team admins or org admins only")
 
 

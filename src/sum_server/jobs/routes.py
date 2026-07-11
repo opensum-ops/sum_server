@@ -20,14 +20,19 @@ router = APIRouter(tags=["jobs"])
 async def _require_owner_or_admin(
     server_id: uuid.UUID, actor_id: uuid.UUID, session: SessionDep
 ) -> None:
-    user = await get_user(session, actor_id)
-    if user is not None and user.is_admin:
-        return
-    server = await get_server(session, server_id)
-    if server is None:
-        raise NotFoundError("server not found")
-    if not await user_can_read(session, server, actor_id):
-        raise ForbiddenError("not authorized for this server")
+    try:
+        user = await get_user(session, actor_id)
+        if user is not None and user.is_admin:
+            return
+        server = await get_server(session, server_id)
+        if server is None:
+            raise NotFoundError("server not found")
+        if not await user_can_read(session, server, actor_id):
+            raise ForbiddenError("not authorized for this server")
+    finally:
+        # Release the auto-begun read transaction so the handler owns its own
+        # ``async with session.begin()``.
+        await session.rollback()
 
 
 @router.post(

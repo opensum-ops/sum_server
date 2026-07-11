@@ -34,6 +34,9 @@ async def current_actor(
     actor = await resolve_actor_from_token(session, token)
     if actor is None:
         raise AuthError("invalid or expired token")
+    # Persist last_used/last_seen and release the auto-begun transaction so the
+    # handler can open its own with ``async with session.begin()``.
+    await session.commit()
     set_actor(actor)
     return actor
 
@@ -62,6 +65,8 @@ async def require_admin(actor: CurrentActor, session: SessionDep) -> Actor:
     user = await get_user(session, actor.id)
     if user is None or not user.is_admin:
         raise ForbiddenError("admin-only endpoint")
+    # Release the read transaction so the handler owns the write transaction.
+    await session.rollback()
     return actor
 
 
