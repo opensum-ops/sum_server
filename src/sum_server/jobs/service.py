@@ -142,7 +142,7 @@ async def pickup_job(
         .where(Job.id == job_id, Job.status == "pending")
         .values(status="picked_up", picked_up_at=now)
     )
-    if (result.rowcount or 0) == 0:
+    if (result.rowcount or 0) == 0:  # type: ignore[attr-defined]
         raise ConflictError("job was picked up by another worker")
     await session.refresh(job)
     await write_audit(
@@ -229,7 +229,7 @@ async def sweep_expired(session: AsyncSession) -> int:
     result = await session.execute(
         update(Job).where(Job.status == "pending", Job.expires_at <= now).values(status="expired")
     )
-    return int(result.rowcount or 0)
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 async def pending_jobs_for_server(
