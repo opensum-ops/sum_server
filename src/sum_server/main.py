@@ -11,10 +11,13 @@ import asyncio
 import datetime as dt
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
+from urllib.parse import quote
 
 import structlog
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -25,6 +28,8 @@ from sum_server.core.logging import RequestIdMiddleware, configure_logging
 from sum_server.core.security import signing
 from sum_server.jobs import service as jobs_svc
 from sum_server.settings import get_settings
+from sum_server.ui.deps import LoginRequiredError
+from sum_server.ui.routes import router as ui_router
 
 log = structlog.get_logger(__name__)
 
@@ -97,6 +102,17 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     install_error_handlers(app)
     app.include_router(api_v1)
+
+    app.include_router(ui_router)
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(Path(__file__).parent / "ui" / "static")),
+        name="static",
+    )
+
+    @app.exception_handler(LoginRequiredError)
+    async def login_redirect(_request: Request, exc: LoginRequiredError) -> RedirectResponse:
+        return RedirectResponse(f"/login?next={quote(exc.next_path)}", status_code=303)
 
     @app.get("/healthz", tags=["meta"])
     async def healthz() -> dict[str, str]:
