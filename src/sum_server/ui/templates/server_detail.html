@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}{{ server.name }} — OpenSUM{% endblock %}
+{% block crumb %}<a href="/servers">Servers</a> / {{ server.name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h2>{{ server.name }}</h2>
+    <span class="pill pill-{{ server.status }}">{{ server.status }}</span>
+</div>
+
+<div class="detail-grid">
+    <div class="card">
+        <div class="card-header"><span class="card-title">Summary</span></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Hostname</dt><dd>{{ server.hostname or "—" }}</dd>
+                <dt>Description</dt><dd>{{ server.description or "—" }}</dd>
+                <dt>Created</dt><dd>{{ server.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd>
+                <dt>ID</dt><dd class="mono">{{ server.id }}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><span class="card-title">Owners</span></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Users</dt>
+                <dd>
+                    {% for u in user_owners %}
+                    <div>
+                        {{ u.email }}
+                        {% if is_admin %}
+                        <form method="post" action="/servers/{{ server.id }}/owners/remove" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="owner_kind" value="user">
+                            <input type="hidden" name="owner_id" value="{{ u.id }}">
+                            <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% else %}<span class="muted">none</span>{% endfor %}
+                </dd>
+                <dt>Teams</dt>
+                <dd>
+                    {% for t in team_owners %}
+                    <div>
+                        {{ t.name }}
+                        {% if is_admin %}
+                        <form method="post" action="/servers/{{ server.id }}/owners/remove" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="owner_kind" value="team">
+                            <input type="hidden" name="owner_id" value="{{ t.id }}">
+                            <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% else %}<span class="muted">none</span>{% endfor %}
+                </dd>
+            </dl>
+            {% if is_admin %}
+            <form method="post" action="/servers/{{ server.id }}/owners/add">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label for="owner_kind">Add owner</label>
+                <div class="filter-bar">
+                    <select id="owner_kind" name="owner_kind" class="field" style="min-width: 110px;">
+                        <option value="user">User</option>
+                        <option value="team">Team</option>
+                    </select>
+                    <input type="text" name="identifier" class="field" placeholder="email or team name" required>
+                    <button type="submit" class="btn btn-ghost">Add</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="section card">
+    <div class="card-header"><span class="card-title">Components</span></div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Present</th>
+                    <th>Kind</th>
+                    <th>Vendor</th>
+                    <th>Model</th>
+                    <th>Serial</th>
+                    <th>Slot</th>
+                    <th>Last seen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in components %}
+                <tr>
+                    <td><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
+                    <td>{{ c.kind }}</td>
+                    <td class="muted">{{ c.vendor or "—" }}</td>
+                    <td>{{ c.model or "—" }}</td>
+                    <td class="mono">{{ c.serial or "—" }}</td>
+                    <td class="mono">{{ c.slot or "—" }}</td>
+                    <td class="muted">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="7">No inventory reported yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="section card">
+    <div class="card-header">
+        <span class="card-title">Jobs</span>
+    </div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Created</th>
+                    <th>Capability</th>
+                    <th>Status</th>
+                    <th>Result</th>
+                    <th>Exit code</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for j in jobs %}
+                <tr>
+                    <td class="muted">{{ j.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+                    <td class="mono">{{ j.capability }}</td>
+                    <td><span class="pill pill-{{ j.status }}">{{ j.status }}</span></td>
+                    <td class="mono truncate" {% if j.result %}title="{{ j.result.output | tojson }}"{% endif %}>
+                        {{ j.result.output | tojson if j.result else "—" }}
+                    </td>
+                    <td class="muted">{{ j.result.exit_code if j.result and j.result.exit_code is not none else "—" }}</td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="5">No jobs yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if server.status != "decommissioned" %}
+<div class="section card">
+    <div class="card-header"><span class="card-title">Run a job</span></div>
+    <div class="card-body">
+        <form method="post" action="/servers/{{ server.id }}/jobs/run">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="capability">Capability</label>
+            <select id="capability" name="capability">
+                {% for cap in capabilities %}
+                <option value="{{ cap }}">{{ cap }}</option>
+                {% endfor %}
+            </select>
+            <fieldset data-cap="rename_nic">
+                <label for="rn-current">Current NIC name</label>
+                <input id="rn-current" name="current_name" type="text" placeholder="eth0">
+                <label for="rn-new">New NIC name</label>
+                <input id="rn-new" name="new_name" type="text" placeholder="ens1">
+            </fieldset>
+            <fieldset data-cap="mount_disk">
+                <label for="md-device">Device</label>
+                <input id="md-device" name="device" type="text" placeholder="/dev/sdb1">
+                <label for="md-mountpoint">Mountpoint</label>
+                <input id="md-mountpoint" name="mountpoint" type="text" placeholder="/data">
+                <label for="md-fstype">Filesystem type</label>
+                <input id="md-fstype" name="fstype" type="text" placeholder="ext4">
+                <label for="md-options">Mount options</label>
+                <input id="md-options" name="options" type="text" value="defaults">
+            </fieldset>
+            <div style="margin-top: 16px;">
+                <button type="submit" class="btn btn-primary">Dispatch job</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+    const capSelect = document.getElementById("capability");
+    function syncCapFields() {
+        document.querySelectorAll("fieldset[data-cap]").forEach((fs) => {
+            const on = fs.dataset.cap === capSelect.value;
+            fs.disabled = !on;   /* disabled fields are not submitted */
+            fs.hidden = !on;
+        });
+    }
+    capSelect.addEventListener("change", syncCapFields);
+    syncCapFields();
+</script>
+{% endif %}
+{% endblock %}

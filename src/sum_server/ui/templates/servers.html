@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Servers — OpenSUM{% endblock %}
+{% block crumb %}Servers{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h2>Servers</h2>
+</div>
+<div class="card">
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Hostname</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in servers %}
+                <tr>
+                    <td><a href="/servers/{{ s.id }}">{{ s.name }}</a></td>
+                    <td class="muted">{{ s.hostname or "—" }}</td>
+                    <td><span class="pill pill-{{ s.status }}">{{ s.status }}</span></td>
+                    <td class="muted">{{ s.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="4">No servers visible to you yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

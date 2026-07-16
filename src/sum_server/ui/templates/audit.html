@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Audit — OpenSUM{% endblock %}
+{% block crumb %}Audit log{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h2>Audit log</h2>
+</div>
+
+<form method="get" action="/audit" class="filter-bar">
+    <div class="field">
+        <label for="f-action">Action</label>
+        <input id="f-action" name="action" type="text" value="{{ action_filter or '' }}" placeholder="e.g. job.create">
+    </div>
+    <div class="field">
+        <label for="f-target">Target kind</label>
+        <input id="f-target" name="target_kind" type="text" value="{{ target_kind_filter or '' }}" placeholder="e.g. server">
+    </div>
+    <button type="submit" class="btn btn-ghost">Apply</button>
+</form>
+
+<div class="card">
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Actor</th>
+                    <th>Action</th>
+                    <th>Target</th>
+                    <th>Payload</th>
+                </tr>
+            </thead>
+            <tbody id="audit-body">
+                {% include "_audit_rows.html" %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

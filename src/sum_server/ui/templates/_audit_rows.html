@@ -1,0 +1,29 @@
+{% for e in entries %}
+<tr>
+    <td class="muted mono">{{ e.ts.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+    <td>
+        {{ e.actor_kind }}
+        {% if e.actor_id %}<span class="mono truncate" title="{{ e.actor_id }}">{{ e.actor_id }}</span>{% endif %}
+    </td>
+    <td class="mono">{{ e.action }}</td>
+    <td>
+        {{ e.target_kind }}
+        {% if e.target_id %}<span class="mono truncate" title="{{ e.target_id }}">{{ e.target_id }}</span>{% endif %}
+    </td>
+    <td><code class="truncate" title="{{ e.payload | tojson }}">{{ e.payload | tojson }}</code></td>
+</tr>
+{% else %}
+<tr class="empty-row"><td colspan="5">No audit entries match.</td></tr>
+{% endfor %}
+{% if next_cursor %}
+<tr>
+    <td colspan="5" style="text-align: center;">
+        <button class="btn btn-ghost btn-sm"
+                hx-get="/audit/rows?cursor={{ next_cursor }}{% if action_filter %}&action={{ action_filter }}{% endif %}{% if target_kind_filter %}&target_kind={{ target_kind_filter }}{% endif %}"
+                hx-target="closest tr"
+                hx-swap="outerHTML">
+            Load more
+        </button>
+    </td>
+</tr>
+{% endif %}
