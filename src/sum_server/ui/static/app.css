@@ -1,0 +1,486 @@
+/* OpenSUM Web UI — full dark theme. Palette lives in :root; everything
+   below consumes the variables. No framework, no build step. */
+
+:root {
+    --bg: #14171c;
+    --panel: #1c2128;
+    --panel-2: #22282f;
+    --sidebar: #101317;
+    --border: #2c333c;
+    --text: #dbe1e8;
+    --text-dim: #8b95a1;
+    --accent: #2e7ef7;
+    --accent-hover: #4a90f8;
+    --green: #34c77b;
+    --amber: #f5a623;
+    --red: #f0513c;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--accent-hover);
+}
+
+code, .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+}
+
+.muted {
+    color: var(--text-dim);
+}
+
+.truncate {
+    display: inline-block;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+/* ---- Shell ------------------------------------------------------------ */
+
+.shell {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 56px;
+    flex-shrink: 0;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+    gap: 8px;
+}
+
+.logo {
+    color: var(--accent);
+    padding: 8px 0 16px;
+}
+
+.nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    color: var(--text-dim);
+}
+
+.nav-item:hover {
+    color: var(--text);
+    background: var(--panel-2);
+}
+
+.nav-item.active {
+    color: var(--accent);
+    background: rgba(46, 126, 247, 0.12);
+}
+
+.nav-item.disabled {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 52px;
+    padding: 0 20px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+}
+
+.crumb {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.user-menu {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.user-email {
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+.inline-form {
+    display: inline;
+}
+
+.content {
+    padding: 20px;
+    max-width: 1200px;
+    width: 100%;
+}
+
+/* ---- Cards & sections -------------------------------------------------- */
+
+.card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.card-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+.card-body {
+    padding: 16px;
+}
+
+.section {
+    margin-top: 24px;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 900px) {
+    .detail-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.kv {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    row-gap: 8px;
+    column-gap: 12px;
+}
+
+.kv dt {
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+.kv dd {
+    overflow-wrap: anywhere;
+}
+
+/* ---- Tables ------------------------------------------------------------ */
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th {
+    text-align: left;
+    padding: 10px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table tbody tr:hover {
+    background: var(--panel-2);
+}
+
+.empty-row td {
+    color: var(--text-dim);
+    text-align: center;
+    padding: 24px;
+}
+
+/* ---- Pills & presence -------------------------------------------------- */
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.pill-active, .pill-completed {
+    background: rgba(52, 199, 123, 0.14);
+    color: var(--green);
+}
+
+.pill-provisioning, .pill-picked_up {
+    background: rgba(245, 166, 35, 0.14);
+    color: var(--amber);
+}
+
+.pill-decommissioned, .pill-failed {
+    background: rgba(240, 81, 60, 0.14);
+    color: var(--red);
+}
+
+.pill-pending, .pill-expired {
+    background: rgba(139, 149, 161, 0.14);
+    color: var(--text-dim);
+}
+
+.dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+
+.dot-green {
+    background: var(--green);
+}
+
+.dot-dim {
+    background: var(--text-dim);
+}
+
+/* ---- Buttons ----------------------------------------------------------- */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    background: none;
+    color: var(--text);
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+}
+
+.btn-ghost {
+    border-color: var(--border);
+    color: var(--text-dim);
+}
+
+.btn-ghost:hover {
+    color: var(--text);
+    background: var(--panel-2);
+}
+
+.btn-danger {
+    border-color: rgba(240, 81, 60, 0.4);
+    color: var(--red);
+}
+
+.btn-danger:hover {
+    background: rgba(240, 81, 60, 0.12);
+}
+
+.btn-sm {
+    padding: 3px 10px;
+    font-size: 12px;
+}
+
+.btn-block {
+    width: 100%;
+}
+
+/* ---- Forms ------------------------------------------------------------- */
+
+label {
+    display: block;
+    margin: 12px 0 4px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+select,
+textarea {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font: inherit;
+}
+
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(46, 126, 247, 0.18);
+}
+
+fieldset {
+    border: none;
+}
+
+fieldset[hidden] {
+    display: none;
+}
+
+.filter-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.filter-bar label {
+    margin: 0 0 4px;
+}
+
+.filter-bar .field {
+    min-width: 180px;
+}
+
+.alert {
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    font-size: 13px;
+}
+
+.alert-error {
+    background: rgba(240, 81, 60, 0.12);
+    border: 1px solid rgba(240, 81, 60, 0.4);
+    color: var(--red);
+}
+
+/* ---- Login ------------------------------------------------------------- */
+
+.login-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: var(--bg);
+}
+
+.login-card {
+    width: 360px;
+    padding: 32px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+.login-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    color: var(--accent);
+}
+
+.login-brand h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.login-form .btn {
+    margin-top: 18px;
+}
+
+/* ---- Page header ------------------------------------------------------- */
+
+.page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.page-head h2 {
+    font-size: 17px;
+    font-weight: 600;
+}
