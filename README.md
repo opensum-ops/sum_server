@@ -2,9 +2,6 @@
 
 Authoritative backend for OpenSUM: ownership, inventory, jobs, audit. Owns the database, exposes the HTTP API, signs and dispatches jobs, hosts the plugin registry (later), records the audit log.
 
-- Product spec: see `../Obsidian/` (source of truth, actively evolving).
-- Stack and rationale: `[[Tech Stack]]` in the Obsidian vault.
-
 ## Layout
 
 `src/sum_server/` is feature-organized:
