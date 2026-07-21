@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from sum_server import __version__
 from sum_server.api.v1 import api_v1
 from sum_server.core.db import dispose_engine, get_engine, get_session, init_engine
 from sum_server.core.errors import install_error_handlers
@@ -98,7 +99,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="sum_server", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="sum_server", version=__version__, lifespan=lifespan)
     app.add_middleware(RequestIdMiddleware)
     install_error_handlers(app)
     app.include_router(api_v1)
