@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 HostStatus = Literal["provisioning", "active", "decommissioned"]
+Presence = Literal[
+    "pending", "online", "unreachable", "rebooting", "powered_off", "stopped", "decommissioned"
+]
 
 
 class HostCreate(BaseModel):
@@ -33,8 +36,19 @@ class HostResponse(BaseModel):
     hostname: str | None
     description: str | None
     status: HostStatus
+    presence: Presence
+    last_heartbeat_at: dt.datetime | None
     version: int
     created_at: dt.datetime
+
+
+class FactResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    key: str
+    value: Any
+    first_seen: dt.datetime
+    last_seen: dt.datetime
 
 
 class HostWithOwnersResponse(HostResponse):

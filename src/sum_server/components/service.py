@@ -103,11 +103,12 @@ async def ingest_inventory(
     host_id: uuid.UUID,
     entries: Sequence[ComponentIngest],
 ) -> dict[str, int]:
-    """Upsert an inventory snapshot for a host.
+    """Upsert a component snapshot for a host.
 
     Components not mentioned in the snapshot are marked ``present=false``. Serial
     changes at the same slot emit a ``host.component_swap`` audit event and
-    the old component is marked absent.
+    the old component is marked absent. The caller writes the summary
+    ``agent.inventory_submitted`` audit entry.
     """
     from sum_server.hosts.service import get_host
 
@@ -194,11 +195,4 @@ async def ingest_inventory(
             c.last_seen = now
             counts["marked_absent"] += 1
 
-    await write_audit(
-        session,
-        action="agent.inventory_submitted",
-        target_kind="host",
-        target_id=host_id,
-        payload=counts,
-    )
     return counts

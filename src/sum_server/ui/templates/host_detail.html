@@ -1,11 +1,14 @@
 {% extends "base.html" %}
-{% block title %}{{ host.name }} — OpenSUM{% endblock %}
-{% block crumb %}<a href="/hosts">Servers</a> / {{ host.name }}{% endblock %}
+{% block title %}{{ host.hostname or host.name }} — OpenSUM{% endblock %}
+{% block crumb %}<a href="/hosts">Hosts</a> / {{ host.hostname or host.name }}{% endblock %}
 
 {% block content %}
 <div class="page-head">
-    <h2>{{ host.name }}</h2>
+    <h2>{{ host.hostname or host.name }}</h2>
+    <span class="pill pill-{{ host.presence }}">{{ host.presence | replace("_", " ") }}</span>
+    {% if host.status != "active" %}
     <span class="pill pill-{{ host.status }}">{{ host.status }}</span>
+    {% endif %}
 </div>
 
 <div class="detail-grid">
@@ -13,8 +16,10 @@
         <div class="card-header"><span class="card-title">Summary</span></div>
         <div class="card-body">
             <dl class="kv">
+                <dt>Name</dt><dd>{{ host.name }}</dd>
                 <dt>Hostname</dt><dd>{{ host.hostname or "—" }}</dd>
                 <dt>Description</dt><dd>{{ host.description or "—" }}</dd>
+                <dt>Last heartbeat</dt><dd>{{ host.last_heartbeat_at.strftime("%Y-%m-%d %H:%M:%S") if host.last_heartbeat_at else "never" }}</dd>
                 <dt>Created</dt><dd>{{ host.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd>
                 <dt>ID</dt><dd class="mono">{{ host.id }}</dd>
             </dl>

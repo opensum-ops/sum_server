@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     enrollment_token_ttl_seconds: int = 3600
     agent_token_ttl_seconds: int = 0  # 0 = no expiry
 
+    # Presence derivation windows (see hosts/presence.py).
+    presence_online_window_seconds: int = 90
+    presence_reboot_grace_seconds: int = 900
+
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     log_format: LogFormat = LogFormat.console
     env: Env = Env.dev

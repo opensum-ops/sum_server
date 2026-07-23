@@ -1,7 +1,8 @@
-"""Agent routes: enrollment lifecycle + agent-side (inventory)."""
+"""Agent routes: enrollment lifecycle + agent-side (inventory, heartbeat)."""
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
 from fastapi import APIRouter, Request, status
@@ -13,10 +14,11 @@ from sum_server.agents.schemas import (
     EnrollmentResponse,
     EnrollRequest,
     EnrollResponse,
+    HeartbeatRequest,
+    HeartbeatResponse,
     InventoryIngestRequest,
     InventoryIngestResponse,
 )
-from sum_server.components.service import ingest_inventory
 from sum_server.core.db import SessionDep
 from sum_server.core.deps import AdminActor, AgentActor
 from sum_server.core.security.signing import get_public_key_b64
@@ -87,7 +89,7 @@ async def enroll(
     )
 
 
-# Agent-side: inventory ----------------------------------------------------------
+# Agent-side: inventory + heartbeat ----------------------------------------------
 
 
 @router.post("/inventory", response_model=InventoryIngestResponse)
@@ -98,5 +100,29 @@ async def submit_inventory(
 ) -> InventoryIngestResponse:
     assert agent.id is not None
     async with session.begin():
-        counts = await ingest_inventory(session, host_id=agent.id, entries=payload.components)
+        counts = await svc.ingest_full_inventory(
+            session,
+            host_id=agent.id,
+            facts=dict(payload.facts),
+            components=payload.components,
+        )
     return InventoryIngestResponse(**counts)
+
+
+@router.post("/heartbeat", response_model=HeartbeatResponse)
+async def heartbeat(
+    payload: HeartbeatRequest,
+    agent: AgentActor,
+    session: SessionDep,
+) -> HeartbeatResponse:
+    assert agent.id is not None
+    async with session.begin():
+        host = await svc.record_heartbeat(
+            session,
+            host_id=agent.id,
+            state=payload.state,
+            detail=payload.detail,
+            boot_id=payload.boot_id,
+        )
+        presence = host.presence
+    return HeartbeatResponse(presence=presence, server_time=dt.datetime.now(tz=dt.UTC))

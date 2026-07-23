@@ -10,6 +10,7 @@ from typing import Any
 
 import structlog
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -96,9 +97,12 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_req: Request, exc: RequestValidationError) -> JSONResponse:
+        # Strip ``ctx``: custom validators put the raw ValueError there, which
+        # is not JSON-serializable (its message is already in ``msg``).
+        errors = [{k: v for k, v in e.items() if k != "ctx"} for e in exc.errors()]
         return JSONResponse(
             status_code=422,
-            content=_envelope("invalid", "invalid request", {"errors": exc.errors()}),
+            content=_envelope("invalid", "invalid request", {"errors": jsonable_encoder(errors)}),
         )
 
     @app.exception_handler(StarletteHTTPException)
