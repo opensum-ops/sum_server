@@ -13,7 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sum_server.core.db import Base, IdMixin, TimestampMixin
 
 if TYPE_CHECKING:
-    from sum_server.servers.models import Server
+    from sum_server.hosts.models import Host
 
 COMPONENT_KINDS = ("disk", "nic", "cpu", "gpu", "memory")
 
@@ -21,8 +21,8 @@ COMPONENT_KINDS = ("disk", "nic", "cpu", "gpu", "memory")
 class Component(Base, IdMixin, TimestampMixin):
     __tablename__ = "components"
 
-    server_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False
+    host_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("hosts.id", ondelete="CASCADE"), nullable=False
     )
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
     vendor: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -38,24 +38,24 @@ class Component(Base, IdMixin, TimestampMixin):
         default=lambda: dt.datetime.now(tz=dt.UTC), nullable=False
     )
 
-    server: Mapped[Server] = relationship(back_populates="components", lazy="joined")
+    host: Mapped[Host] = relationship(back_populates="components", lazy="joined")
 
     __table_args__ = (
         Index(
-            "uq_components_server_kind_serial",
-            "server_id",
+            "uq_components_host_kind_serial",
+            "host_id",
             "kind",
             "serial",
             unique=True,
             postgresql_where=text("serial IS NOT NULL"),
         ),
         Index(
-            "uq_components_server_kind_slot",
-            "server_id",
+            "uq_components_host_kind_slot",
+            "host_id",
             "kind",
             "slot",
             unique=True,
             postgresql_where=text("serial IS NULL AND slot IS NOT NULL"),
         ),
-        Index("ix_components_server_kind", "server_id", "kind"),
+        Index("ix_components_host_kind", "host_id", "kind"),
     )

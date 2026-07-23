@@ -39,20 +39,20 @@ async def create_enrollment(
     async with session.begin():
         raw, enr = await svc.create_enrollment(
             session,
-            server_id=payload.server_id,
+            host_id=payload.host_id,
             actor=admin,
             ttl_seconds=payload.ttl_seconds,
         )
     return EnrollmentCreateResponse(id=enr.id, enrollment_token=raw, expires_at=enr.expires_at)
 
 
-@router.get("/enrollments/for-server/{server_id}", response_model=list[EnrollmentResponse])
+@router.get("/enrollments/for-host/{host_id}", response_model=list[EnrollmentResponse])
 async def list_enrollments(
-    server_id: uuid.UUID,
+    host_id: uuid.UUID,
     _admin: AdminActor,
     session: SessionDep,
 ) -> list[EnrollmentResponse]:
-    rows = await svc.list_enrollments_for_server(session, server_id=server_id)
+    rows = await svc.list_enrollments_for_host(session, host_id=host_id)
     return [EnrollmentResponse.model_validate(r) for r in rows]
 
 
@@ -77,12 +77,12 @@ async def enroll(
 ) -> EnrollResponse:
     ip = request.client.host if request.client else None
     async with session.begin():
-        agent_token, server_id = await svc.consume_enrollment(
+        agent_token, host_id = await svc.consume_enrollment(
             session, raw_token=payload.enrollment_token, ip=ip
         )
     return EnrollResponse(
         agent_token=agent_token,
-        server_id=server_id,
+        host_id=host_id,
         signing_public_key=get_public_key_b64(),
     )
 
@@ -98,5 +98,5 @@ async def submit_inventory(
 ) -> InventoryIngestResponse:
     assert agent.id is not None
     async with session.begin():
-        counts = await ingest_inventory(session, server_id=agent.id, entries=payload.components)
+        counts = await ingest_inventory(session, host_id=agent.id, entries=payload.components)
     return InventoryIngestResponse(**counts)

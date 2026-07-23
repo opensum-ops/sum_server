@@ -12,7 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sum_server.core.db import Base, IdMixin, TimestampMixin
 
 if TYPE_CHECKING:
-    from sum_server.servers.models import Server
+    from sum_server.hosts.models import Host
     from sum_server.users.models import User
 
 
@@ -37,8 +37,8 @@ class SessionToken(Base, IdMixin, TimestampMixin):
 class AgentToken(Base, IdMixin, TimestampMixin):
     __tablename__ = "agent_tokens"
 
-    server_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False
+    host_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("hosts.id", ondelete="CASCADE"), nullable=False
     )
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     expires_at: Mapped[dt.datetime | None] = mapped_column(nullable=True)
@@ -46,6 +46,6 @@ class AgentToken(Base, IdMixin, TimestampMixin):
     revoked_at: Mapped[dt.datetime | None] = mapped_column(nullable=True)
     ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
 
-    server: Mapped[Server] = relationship(back_populates="agent_tokens", lazy="joined")
+    host: Mapped[Host] = relationship(back_populates="agent_tokens", lazy="joined")
 
-    __table_args__ = (Index("ix_agent_tokens_server", "server_id"),)
+    __table_args__ = (Index("ix_agent_tokens_host", "host_id"),)

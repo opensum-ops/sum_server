@@ -25,22 +25,22 @@ def _utcnow() -> dt.datetime:
 async def create_enrollment(
     session: AsyncSession,
     *,
-    server_id: uuid.UUID,
+    host_id: uuid.UUID,
     actor: Actor,
     ttl_seconds: int | None = None,
 ) -> tuple[str, AgentEnrollment]:
     """Create a one-time enrollment token. Returns ``(raw_token, row)``."""
-    from sum_server.servers.service import get_server
+    from sum_server.hosts.service import get_host
 
-    server = await get_server(session, server_id)
-    if server is None:
-        raise NotFoundError("server not found")
+    host = await get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
     settings = get_settings()
     ttl = ttl_seconds or settings.enrollment_token_ttl_seconds
     raw, token_hash = mint_token()
     enr = AgentEnrollment(
         id=new_id(),
-        server_id=server_id,
+        host_id=host_id,
         token_hash=token_hash,
         expires_at=_utcnow() + dt.timedelta(seconds=ttl),
         created_by_actor_kind=actor.kind,
@@ -50,8 +50,8 @@ async def create_enrollment(
     await write_audit(
         session,
         action="agent.enrollment_created",
-        target_kind="server",
-        target_id=server_id,
+        target_kind="host",
+        target_id=host_id,
         payload={"enrollment_id": str(enr.id), "ttl_seconds": ttl},
     )
     return raw, enr
@@ -68,8 +68,8 @@ async def revoke_enrollment(session: AsyncSession, *, enrollment_id: uuid.UUID) 
         await write_audit(
             session,
             action="agent.enrollment_revoked",
-            target_kind="server",
-            target_id=enr.server_id,
+            target_kind="host",
+            target_id=enr.host_id,
             payload={"enrollment_id": str(enr.id)},
         )
     return enr
@@ -80,7 +80,7 @@ async def consume_enrollment(
 ) -> tuple[str, uuid.UUID]:
     """Exchange a one-time enrollment token for a long-lived agent token.
 
-    Atomic against concurrent consumption. Returns ``(raw_agent_token, server_id)``.
+    Atomic against concurrent consumption. Returns ``(raw_agent_token, host_id)``.
     """
     token_hash = hash_token(raw_token)
     enr = (
@@ -106,27 +106,27 @@ async def consume_enrollment(
     if (result.rowcount or 0) == 0:  # type: ignore[attr-defined]
         raise EnrollmentError("enrollment was concurrently consumed")
 
-    raw_agent_token, _ = await mint_agent_token(session, server_id=enr.server_id, ip=ip)
+    raw_agent_token, _ = await mint_agent_token(session, host_id=enr.host_id, ip=ip)
     await write_audit(
         session,
         action="agent.enrolled",
-        target_kind="server",
-        target_id=enr.server_id,
+        target_kind="host",
+        target_id=enr.host_id,
         payload={"enrollment_id": str(enr.id), "ip": ip},
         actor_kind="agent",
-        actor_id=enr.server_id,
+        actor_id=enr.host_id,
     )
-    return raw_agent_token, enr.server_id
+    return raw_agent_token, enr.host_id
 
 
-async def list_enrollments_for_server(
-    session: AsyncSession, *, server_id: uuid.UUID
+async def list_enrollments_for_host(
+    session: AsyncSession, *, host_id: uuid.UUID
 ) -> list[AgentEnrollment]:
     return list(
         (
             await session.execute(
                 select(AgentEnrollment)
-                .where(AgentEnrollment.server_id == server_id)
+                .where(AgentEnrollment.host_id == host_id)
                 .order_by(AgentEnrollment.created_at.desc())
             )
         )

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ server.name }} — OpenSUM{% endblock %}
-{% block crumb %}<a href="/servers">Servers</a> / {{ server.name }}{% endblock %}
+{% block title %}{{ host.name }} — OpenSUM{% endblock %}
+{% block crumb %}<a href="/hosts">Servers</a> / {{ host.name }}{% endblock %}
 
 {% block content %}
 <div class="page-head">
-    <h2>{{ server.name }}</h2>
-    <span class="pill pill-{{ server.status }}">{{ server.status }}</span>
+    <h2>{{ host.name }}</h2>
+    <span class="pill pill-{{ host.status }}">{{ host.status }}</span>
 </div>
 
 <div class="detail-grid">
@@ -13,10 +13,10 @@
         <div class="card-header"><span class="card-title">Summary</span></div>
         <div class="card-body">
             <dl class="kv">
-                <dt>Hostname</dt><dd>{{ server.hostname or "—" }}</dd>
-                <dt>Description</dt><dd>{{ server.description or "—" }}</dd>
-                <dt>Created</dt><dd>{{ server.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd>
-                <dt>ID</dt><dd class="mono">{{ server.id }}</dd>
+                <dt>Hostname</dt><dd>{{ host.hostname or "—" }}</dd>
+                <dt>Description</dt><dd>{{ host.description or "—" }}</dd>
+                <dt>Created</dt><dd>{{ host.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd>
+                <dt>ID</dt><dd class="mono">{{ host.id }}</dd>
             </dl>
         </div>
     </div>
@@ -31,7 +31,7 @@
                     <div>
                         {{ u.email }}
                         {% if is_admin %}
-                        <form method="post" action="/servers/{{ server.id }}/owners/remove" class="inline-form">
+                        <form method="post" action="/hosts/{{ host.id }}/owners/remove" class="inline-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="owner_kind" value="user">
                             <input type="hidden" name="owner_id" value="{{ u.id }}">
@@ -47,7 +47,7 @@
                     <div>
                         {{ t.name }}
                         {% if is_admin %}
-                        <form method="post" action="/servers/{{ server.id }}/owners/remove" class="inline-form">
+                        <form method="post" action="/hosts/{{ host.id }}/owners/remove" class="inline-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="owner_kind" value="team">
                             <input type="hidden" name="owner_id" value="{{ t.id }}">
@@ -59,7 +59,7 @@
                 </dd>
             </dl>
             {% if is_admin %}
-            <form method="post" action="/servers/{{ server.id }}/owners/add">
+            <form method="post" action="/hosts/{{ host.id }}/owners/add">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <label for="owner_kind">Add owner</label>
                 <div class="filter-bar">

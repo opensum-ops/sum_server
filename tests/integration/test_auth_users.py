@@ -66,7 +66,7 @@ async def test_logout_invalidates_token(client: AsyncClient, user_token: str) ->
     assert r2.status_code == 401
 
 
-@pytest.mark.parametrize("path", ["/api/v1/users", "/api/v1/teams", "/api/v1/servers"])
+@pytest.mark.parametrize("path", ["/api/v1/users", "/api/v1/teams", "/api/v1/hosts"])
 async def test_unauthenticated_endpoints_require_token(client: AsyncClient, path: str) -> None:
     r = await client.get(path)
     assert r.status_code == 401

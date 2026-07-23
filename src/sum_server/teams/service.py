@@ -1,4 +1,4 @@
-"""Team services: CRUD with last-admin guard, server-ownership guard."""
+"""Team services: CRUD with last-admin guard, host-ownership guard."""
 
 from __future__ import annotations
 
@@ -100,17 +100,17 @@ async def delete_team(session: AsyncSession, *, team_id: uuid.UUID) -> Team:
     team = await get_team(session, team_id)
     if team is None:
         raise NotFoundError("team not found")
-    # Refuse deletion if team owns active servers. Local import to avoid cycles.
-    from sum_server.servers.models import Server, server_owner_teams
+    # Refuse deletion if team owns active hosts. Local import to avoid cycles.
+    from sum_server.hosts.models import Host, host_owner_teams
 
     affected = (
         (
             await session.execute(
-                select(Server.id)
-                .join(server_owner_teams, Server.id == server_owner_teams.c.server_id)
+                select(Host.id)
+                .join(host_owner_teams, Host.id == host_owner_teams.c.host_id)
                 .where(
-                    server_owner_teams.c.team_id == team_id,
-                    Server.status != "decommissioned",
+                    host_owner_teams.c.team_id == team_id,
+                    Host.status != "decommissioned",
                 )
                 .limit(20)
             )
@@ -120,7 +120,7 @@ async def delete_team(session: AsyncSession, *, team_id: uuid.UUID) -> Team:
     )
     if affected:
         raise ConflictError(
-            "team owns active servers; reassign before deletion",
+            "team owns active hosts; reassign before deletion",
             details={"server_ids": [str(s) for s in affected]},
         )
     await session.delete(team)

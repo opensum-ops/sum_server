@@ -11,7 +11,7 @@ from sum_server.components.schemas import ComponentIngest
 
 
 class EnrollmentCreate(BaseModel):
-    server_id: uuid.UUID
+    host_id: uuid.UUID
     ttl_seconds: int | None = Field(default=None, ge=60, le=86400)
 
 
@@ -24,7 +24,7 @@ class EnrollmentCreateResponse(BaseModel):
 class EnrollmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
-    server_id: uuid.UUID
+    host_id: uuid.UUID
     expires_at: dt.datetime
     used_at: dt.datetime | None
     revoked_at: dt.datetime | None
@@ -36,7 +36,7 @@ class EnrollRequest(BaseModel):
 
 class EnrollResponse(BaseModel):
     agent_token: str
-    server_id: uuid.UUID
+    host_id: uuid.UUID
     signing_public_key: str
 
 

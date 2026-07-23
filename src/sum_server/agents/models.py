@@ -14,8 +14,8 @@ from sum_server.core.db import Base, IdMixin, TimestampMixin
 class AgentEnrollment(Base, IdMixin, TimestampMixin):
     __tablename__ = "agent_enrollments"
 
-    server_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False
+    host_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("hosts.id", ondelete="CASCADE"), nullable=False
     )
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     expires_at: Mapped[dt.datetime] = mapped_column(nullable=False)

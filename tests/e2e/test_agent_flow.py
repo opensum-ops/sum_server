@@ -1,6 +1,6 @@
 """End-to-end agent flow.
 
-admin → create server → enrollment → agent enrolls → submit inventory →
+admin → create host → enrollment → agent enrolls → submit inventory →
 resubmit with a swapped disk → admin queries audit and sees every state change.
 """
 
@@ -14,20 +14,20 @@ from tests.conftest import auth_h
 
 
 async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
-    # 1. Create server
+    # 1. Create host
     sr = await client.post(
-        "/api/v1/servers",
+        "/api/v1/hosts",
         headers=auth_h(admin_token),
         json={"name": "node-1", "status": "active"},
     )
     assert sr.status_code == 201
-    server_id = sr.json()["id"]
+    host_id = sr.json()["id"]
 
     # 2. Create enrollment
     er = await client.post(
         "/api/v1/agents/enrollments",
         headers=auth_h(admin_token),
-        json={"server_id": server_id},
+        json={"host_id": host_id},
     )
     assert er.status_code == 201
     enrollment_token = er.json()["enrollment_token"]
@@ -37,7 +37,7 @@ async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
     assert enroll.status_code == 200
     agent_token = enroll.json()["agent_token"]
     pubkey_b64 = enroll.json()["signing_public_key"]
-    assert enroll.json()["server_id"] == server_id
+    assert enroll.json()["host_id"] == host_id
 
     # 4. The published signing key is a valid Ed25519 public key
     assert len(base64.b64decode(pubkey_b64)) == 32
@@ -119,7 +119,7 @@ async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
 
     # 7. Components reflect the swap: old disk absent, new disk present
     comps = await client.get(
-        f"/api/v1/servers/{server_id}/components",
+        f"/api/v1/hosts/{host_id}/components",
         headers=auth_h(admin_token),
         params={"include_absent": "true"},
     )
@@ -132,10 +132,10 @@ async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
     assert audit.status_code == 200
     actions = {e["action"] for e in audit.json()["items"]}
     for expected in {
-        "server.create",
+        "host.create",
         "agent.enrollment_created",
         "agent.enrolled",
         "agent.inventory_submitted",
-        "server.component_swap",
+        "host.component_swap",
     }:
         assert expected in actions, f"missing audit action: {expected}"

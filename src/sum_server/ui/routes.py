@@ -1,4 +1,4 @@
-"""Web UI routes: login/logout + server-rendered pages."""
+"""Web UI routes: login/logout + host-rendered pages."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from sum_server.core.audit import AuditEntry
 from sum_server.core.db import SessionDep
 from sum_server.core.errors import AuthError, ForbiddenError, NotFoundError
 from sum_server.core.pagination import Cursor
-from sum_server.servers import service as servers_svc
+from sum_server.hosts import service as hosts_svc
 from sum_server.settings import Env, get_settings
 from sum_server.ui.deps import (
     CSRF_COOKIE,
@@ -54,7 +54,7 @@ async def login_submit(
     email: Annotated[str, Form()],
     password: Annotated[str, Form()],
     csrf_token: Annotated[str, Form()],
-    next_path: Annotated[str, Form(alias="next")] = "/servers",
+    next_path: Annotated[str, Form(alias="next")] = "/hosts",
 ) -> HTMLResponse | RedirectResponse:
     check_csrf(request, csrf_token)
     ip = request.client.host if request.client else None
@@ -72,7 +72,7 @@ async def login_submit(
             status_code=401,
         )
     if not next_path.startswith("/") or next_path.startswith("//"):
-        next_path = "/servers"
+        next_path = "/hosts"
     max_age = max(0, int((sess.expires_at - dt.datetime.now(tz=dt.UTC)).total_seconds()))
     resp = RedirectResponse(next_path, status_code=303)
     resp.set_cookie(
@@ -105,7 +105,7 @@ async def logout(
 
 @router.get("/", response_class=RedirectResponse)
 async def root(_user: UiUser) -> RedirectResponse:
-    return RedirectResponse("/servers", status_code=303)
+    return RedirectResponse("/hosts", status_code=303)
 
 
 async def _render(
@@ -134,55 +134,51 @@ async def _render(
     return resp
 
 
-@router.get("/servers", response_class=HTMLResponse)
-async def servers_page(request: Request, session: SessionDep, user: UiUser) -> HTMLResponse:
+@router.get("/hosts", response_class=HTMLResponse)
+async def hosts_page(request: Request, session: SessionDep, user: UiUser) -> HTMLResponse:
     assert user.id is not None
-    rows = await servers_svc.list_servers_visible_to(
+    rows = await hosts_svc.list_hosts_visible_to(
         session, actor_user_id=user.id, limit=200, cursor=None
     )
-    return await _render(
-        request, session, user.id, "servers.html", "servers", {"servers": rows[:200]}
-    )
+    return await _render(request, session, user.id, "hosts.html", "hosts", {"hosts": rows[:200]})
 
 
-@router.get("/servers/{server_id}", response_class=HTMLResponse)
-async def server_detail_page(
+@router.get("/hosts/{host_id}", response_class=HTMLResponse)
+async def host_detail_page(
     request: Request,
     session: SessionDep,
     user: UiUser,
-    server_id: uuid.UUID,
+    host_id: uuid.UUID,
 ) -> HTMLResponse:
     assert user.id is not None
-    server = await servers_svc.get_server(session, server_id)
-    if server is None:
-        raise NotFoundError("server not found")
-    if not await servers_svc.user_can_read(session, server, user.id):
+    host = await hosts_svc.get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
+    if not await hosts_svc.user_can_read(session, host, user.id):
         raise ForbiddenError("not visible")
 
     from sum_server.teams.service import get_team
     from sum_server.users.service import get_user
 
-    components = await components_svc.list_components(
-        session, server_id=server_id, include_absent=True
-    )
+    components = await components_svc.list_components(session, host_id=host_id, include_absent=True)
     user_owners = [
         u
-        for uid in await servers_svc.get_user_owner_ids(session, server_id)
+        for uid in await hosts_svc.get_user_owner_ids(session, host_id)
         if (u := await get_user(session, uid)) is not None
     ]
     team_owners = [
         t
-        for tid in await servers_svc.get_team_owner_ids(session, server_id)
+        for tid in await hosts_svc.get_team_owner_ids(session, host_id)
         if (t := await get_team(session, tid)) is not None
     ]
     return await _render(
         request,
         session,
         user.id,
-        "server_detail.html",
-        "servers",
+        "host_detail.html",
+        "hosts",
         {
-            "server": server,
+            "host": host,
             "components": components,
             "user_owners": user_owners,
             "team_owners": team_owners,
@@ -190,33 +186,31 @@ async def server_detail_page(
     )
 
 
-async def _require_can_manage(
-    session: SessionDep, server_id: uuid.UUID, actor_id: uuid.UUID
-) -> None:
+async def _require_can_manage(session: SessionDep, host_id: uuid.UUID, actor_id: uuid.UUID) -> None:
     """Owner-or-admin gate for UI write actions (mirrors the API helpers)."""
-    server = await servers_svc.get_server(session, server_id)
-    if server is None:
-        raise NotFoundError("server not found")
-    ok = await servers_svc.user_can_read(session, server, actor_id)
+    host = await hosts_svc.get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
+    ok = await hosts_svc.user_can_read(session, host, actor_id)
     # Release the auto-begun read transaction so the handler owns the write.
     await session.rollback()
     if not ok:
-        raise ForbiddenError("not authorized for this server")
+        raise ForbiddenError("not authorized for this host")
 
 
-@router.post("/servers/{server_id}/owners/add")
+@router.post("/hosts/{host_id}/owners/add")
 async def owners_add(
     request: Request,
     session: SessionDep,
     user: UiUser,
-    server_id: uuid.UUID,
+    host_id: uuid.UUID,
     csrf_token: Annotated[str, Form()],
     owner_kind: Annotated[str, Form()],
     identifier: Annotated[str, Form()],
 ) -> RedirectResponse:
     check_csrf(request, csrf_token)
     assert user.id is not None
-    await _require_can_manage(session, server_id, user.id)
+    await _require_can_manage(session, host_id, user.id)
 
     from sum_server.teams.service import get_team_by_name
     from sum_server.users.service import get_user_by_email
@@ -226,34 +220,34 @@ async def owners_add(
             team = await get_team_by_name(session, identifier.strip())
             if team is None:
                 raise NotFoundError("team not found")
-            await servers_svc.add_team_owner(session, server_id=server_id, team_id=team.id)
+            await hosts_svc.add_team_owner(session, host_id=host_id, team_id=team.id)
         else:
             owner = await get_user_by_email(session, identifier.strip().lower())
             if owner is None:
                 raise NotFoundError("user not found")
-            await servers_svc.add_user_owner(session, server_id=server_id, user_id=owner.id)
-    return RedirectResponse(f"/servers/{server_id}", status_code=303)
+            await hosts_svc.add_user_owner(session, host_id=host_id, user_id=owner.id)
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
 
 
-@router.post("/servers/{server_id}/owners/remove")
+@router.post("/hosts/{host_id}/owners/remove")
 async def owners_remove(
     request: Request,
     session: SessionDep,
     user: UiUser,
-    server_id: uuid.UUID,
+    host_id: uuid.UUID,
     csrf_token: Annotated[str, Form()],
     owner_kind: Annotated[str, Form()],
     owner_id: Annotated[uuid.UUID, Form()],
 ) -> RedirectResponse:
     check_csrf(request, csrf_token)
     assert user.id is not None
-    await _require_can_manage(session, server_id, user.id)
+    await _require_can_manage(session, host_id, user.id)
     async with session.begin():
         if owner_kind == "team":
-            await servers_svc.remove_team_owner(session, server_id=server_id, team_id=owner_id)
+            await hosts_svc.remove_team_owner(session, host_id=host_id, team_id=owner_id)
         else:
-            await servers_svc.remove_user_owner(session, server_id=server_id, user_id=owner_id)
-    return RedirectResponse(f"/servers/{server_id}", status_code=303)
+            await hosts_svc.remove_user_owner(session, host_id=host_id, user_id=owner_id)
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
 
 
 async def _require_admin_ui(session: SessionDep, actor_id: uuid.UUID) -> None:

@@ -93,7 +93,7 @@ class ComponentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    server_id: uuid.UUID
+    host_id: uuid.UUID
     kind: ComponentKind
     vendor: str | None
     model: str | None
