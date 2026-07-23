@@ -298,6 +298,27 @@ code, .mono {
     color: var(--text-dim);
 }
 
+/* Presence states (derived; see hosts/presence.py) */
+.pill-online {
+    background: rgba(52, 199, 123, 0.14);
+    color: var(--green);
+}
+
+.pill-unreachable {
+    background: rgba(240, 81, 60, 0.14);
+    color: var(--red);
+}
+
+.pill-rebooting {
+    background: rgba(245, 166, 35, 0.14);
+    color: var(--amber);
+}
+
+.pill-powered_off, .pill-stopped {
+    background: rgba(139, 149, 161, 0.14);
+    color: var(--text-dim);
+}
+
 .dot {
     display: inline-block;
     width: 8px;

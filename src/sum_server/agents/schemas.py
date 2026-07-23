@@ -1,13 +1,21 @@
-"""Agent schemas (enrollment, inventory ingest)."""
+"""Agent schemas (enrollment, inventory ingest, heartbeat)."""
 
 from __future__ import annotations
 
 import datetime as dt
+import re
 import uuid
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from sum_server.components.schemas import ComponentIngest
+
+# Fact keys: lowercase snake, dots allowed for namespacing (e.g. "os.version").
+_FACT_KEY_RE = re.compile(r"[a-z][a-z0-9_.]{0,63}")
+
+# JSON scalar or list of strings; nested objects are deliberately not allowed.
+FactValue = str | int | float | bool | None | list[str]
 
 
 class EnrollmentCreate(BaseModel):
@@ -41,7 +49,23 @@ class EnrollResponse(BaseModel):
 
 
 class InventoryIngestRequest(BaseModel):
+    facts: dict[str, FactValue] = Field(default_factory=dict)
     components: list[ComponentIngest]
+
+    @field_validator("facts")
+    @classmethod
+    def _validate_facts(cls, v: dict[str, FactValue]) -> dict[str, FactValue]:
+        for key, value in v.items():
+            if not _FACT_KEY_RE.fullmatch(key):
+                raise ValueError(f"invalid fact key: {key!r}")
+            if isinstance(value, str) and len(value) > 1024:
+                raise ValueError(f"fact {key!r}: string value too long (max 1024)")
+            if isinstance(value, list):
+                if len(value) > 64:
+                    raise ValueError(f"fact {key!r}: list too long (max 64 items)")
+                if any(len(item) > 256 for item in value):
+                    raise ValueError(f"fact {key!r}: list item too long (max 256)")
+        return v
 
 
 class InventoryIngestResponse(BaseModel):
@@ -49,3 +73,18 @@ class InventoryIngestResponse(BaseModel):
     updated: int
     marked_absent: int
     swaps: int
+    facts_created: int
+    facts_updated: int
+    facts_removed: int
+
+
+class HeartbeatRequest(BaseModel):
+    state: Literal["running", "stopping"] = "running"
+    # Why the agent is stopping; ignored (and meaningless) while running.
+    detail: Literal["rebooting", "powered_off", "agent_stop"] | None = None
+    boot_id: str | None = Field(default=None, max_length=64)
+
+
+class HeartbeatResponse(BaseModel):
+    presence: str
+    server_time: dt.datetime

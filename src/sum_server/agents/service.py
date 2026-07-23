@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sum_server.agents.models import AgentEnrollment
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sum_server.components.schemas import ComponentIngest
+    from sum_server.hosts.models import Host
 from sum_server.auth.service import mint_agent_token
 from sum_server.core.audit import write_audit
 from sum_server.core.context import Actor
@@ -107,6 +114,14 @@ async def consume_enrollment(
         raise EnrollmentError("enrollment was concurrently consumed")
 
     raw_agent_token, _ = await mint_agent_token(session, host_id=enr.host_id, ip=ip)
+
+    # A successfully enrolled host is no longer provisioning.
+    from sum_server.hosts.service import get_host
+
+    host = await get_host(session, enr.host_id)
+    if host is not None and host.status == "provisioning":
+        host.status = "active"
+
     await write_audit(
         session,
         action="agent.enrolled",
@@ -117,6 +132,98 @@ async def consume_enrollment(
         actor_id=enr.host_id,
     )
     return raw_agent_token, enr.host_id
+
+
+async def ingest_full_inventory(
+    session: AsyncSession,
+    *,
+    host_id: uuid.UUID,
+    facts: dict[str, object],
+    components: Sequence[ComponentIngest],
+) -> dict[str, int]:
+    """Ingest a full agent snapshot (facts + components) and audit once."""
+    from sum_server.components.service import ingest_inventory
+    from sum_server.hosts.facts import ingest_facts
+    from sum_server.hosts.service import get_host
+
+    host = await get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
+
+    fact_changes = await ingest_facts(session, host=host, facts=dict(facts))
+    counts = await ingest_inventory(session, host_id=host.id, entries=components)
+    counts["facts_created"] = len(fact_changes["created"])
+    counts["facts_updated"] = len(fact_changes["updated"])
+    counts["facts_removed"] = len(fact_changes["removed"])
+
+    await write_audit(
+        session,
+        action="agent.inventory_submitted",
+        target_kind="host",
+        target_id=host.id,
+        payload={**counts, "fact_changes": {k: v for k, v in fact_changes.items() if v}},
+    )
+    return counts
+
+
+_GOODBYE_DETAIL_TO_PRESENCE = {
+    "rebooting": "rebooting",
+    "powered_off": "powered_off",
+    "agent_stop": "stopped",
+    None: "stopped",
+}
+
+
+async def record_heartbeat(
+    session: AsyncSession,
+    *,
+    host_id: uuid.UUID,
+    state: str,
+    detail: str | None,
+    boot_id: str | None,
+) -> Host:
+    """Record a heartbeat (running) or goodbye (stopping) from an agent.
+
+    A running heartbeat clears any goodbye state. A ``boot_id`` change without
+    a preceding reboot/power-off goodbye means the host went down uncleanly
+    (crash or power loss) and is audited as ``host.unclean_reboot``.
+    """
+    from sum_server.hosts.service import get_host
+
+    host = await get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
+    now = _utcnow()
+
+    if state == "running":
+        if (
+            boot_id
+            and host.boot_id
+            and boot_id != host.boot_id
+            and host.reported_presence not in ("rebooting", "powered_off")
+        ):
+            await write_audit(
+                session,
+                action="host.unclean_reboot",
+                target_kind="host",
+                target_id=host.id,
+                payload={"old_boot_id": host.boot_id, "new_boot_id": boot_id},
+            )
+        if boot_id:
+            host.boot_id = boot_id
+        host.reported_presence = None
+    else:  # stopping
+        host.reported_presence = _GOODBYE_DETAIL_TO_PRESENCE.get(detail, "stopped")
+        await write_audit(
+            session,
+            action="host.reported_shutdown",
+            target_kind="host",
+            target_id=host.id,
+            payload={"detail": detail, "presence": host.reported_presence},
+        )
+
+    host.last_heartbeat_at = now
+    return host
 
 
 async def list_enrollments_for_host(

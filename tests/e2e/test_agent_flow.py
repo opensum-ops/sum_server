@@ -42,11 +42,16 @@ async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
     # 4. The published signing key is a valid Ed25519 public key
     assert len(base64.b64decode(pubkey_b64)) == 32
 
-    # 5. Submit inventory
+    # 5. Submit inventory (facts + components)
     inv = await client.post(
         "/api/v1/agents/inventory",
         headers=auth_h(agent_token),
         json={
+            "facts": {
+                "hostname": "node-1.example.com",
+                "kernel": "6.9.3-x64v3",
+                "os_name": "Debian GNU/Linux",
+            },
             "components": [
                 {
                     "kind": "disk",
@@ -73,17 +78,35 @@ async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
                         "base_hz": 2_450_000_000,
                     },
                 },
-            ]
+            ],
         },
     )
     assert inv.status_code == 200, inv.text
     assert inv.json()["created"] == 2
+    assert inv.json()["facts_created"] == 3
+
+    # 5b. Heartbeat: host goes online, hostname was adopted
+    hb = await client.post(
+        "/api/v1/agents/heartbeat",
+        headers=auth_h(agent_token),
+        json={"state": "running", "boot_id": "boot-e2e-1"},
+    )
+    assert hb.status_code == 200
+    assert hb.json()["presence"] == "online"
+    hr = await client.get(f"/api/v1/hosts/{host_id}", headers=auth_h(admin_token))
+    assert hr.json()["hostname"] == "node-1.example.com"
+    assert hr.json()["presence"] == "online"
 
     # 6. Resubmit with a different disk in the same slot: swap detected
     inv2 = await client.post(
         "/api/v1/agents/inventory",
         headers=auth_h(agent_token),
         json={
+            "facts": {
+                "hostname": "node-1.example.com",
+                "kernel": "6.9.3-x64v3",
+                "os_name": "Debian GNU/Linux",
+            },
             "components": [
                 {
                     "kind": "disk",
@@ -110,7 +133,7 @@ async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
                         "base_hz": 2_450_000_000,
                     },
                 },
-            ]
+            ],
         },
     )
     assert inv2.status_code == 200, inv2.text

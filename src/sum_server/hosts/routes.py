@@ -12,8 +12,10 @@ from sum_server.core.db import SessionDep
 from sum_server.core.deps import AdminActor, UserActor
 from sum_server.core.errors import ForbiddenError, NotFoundError
 from sum_server.core.pagination import Cursor, Page, page_params
+from sum_server.hosts import facts as facts_svc
 from sum_server.hosts import service as svc
 from sum_server.hosts.schemas import (
+    FactResponse,
     HostCreate,
     HostResponse,
     HostStatus,
@@ -106,6 +108,22 @@ async def get_host(
     resp.user_owners = await svc.get_user_owner_ids(session, host_id)
     resp.team_owners = await svc.get_team_owner_ids(session, host_id)
     return resp
+
+
+@router.get("/{host_id}/facts", response_model=list[FactResponse])
+async def list_host_facts(
+    host_id: uuid.UUID,
+    actor: UserActor,
+    session: SessionDep,
+) -> list[FactResponse]:
+    host = await svc.get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
+    assert actor.id is not None
+    if not await svc.user_can_read(session, host, actor.id):
+        raise ForbiddenError("not visible")
+    rows = await facts_svc.list_facts(session, host_id=host_id)
+    return [FactResponse.model_validate(r) for r in rows]
 
 
 @router.patch("/{host_id}", response_model=HostResponse)
