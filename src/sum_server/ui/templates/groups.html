@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Groups — OpenSUM{% endblock %}
+{% block crumb %}Groups{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h2>Groups</h2>
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>Group</th><th>Description</th><th>Members</th><th>Parameters</th></tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td>
+                        <span class="tree-indent" style="padding-left: {{ row.depth * 20 }}px;">
+                            {% if row.depth > 0 %}<span class="muted">└&nbsp;</span>{% endif %}
+                            <a href="/groups/{{ row.group.id }}">{{ row.group.name }}</a>
+                        </span>
+                    </td>
+                    <td class="muted">{{ row.group.description or "—" }}</td>
+                    <td>{{ row.members if row.group.parent_id is not none else "all hosts" }}</td>
+                    <td>{{ row.params }}</td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="4">No groups yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if is_admin %}
+<div class="section card" style="max-width: 560px;">
+    <div class="card-header"><span class="card-title">Create group</span></div>
+    <div class="card-body">
+        <form method="post" action="/groups/create">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="g-name">Name</label>
+            <input id="g-name" name="name" type="text" class="field" placeholder="dc-east" required>
+            <label for="g-parent">Parent</label>
+            <select id="g-parent" name="parent_id" class="field">
+                {% for g in groups %}
+                <option value="{{ g.id }}" {% if g.parent_id is none %}selected{% endif %}>{{ g.name }}</option>
+                {% endfor %}
+            </select>
+            <label for="g-desc">Description (optional)</label>
+            <input id="g-desc" name="description" type="text" class="field">
+            <div style="margin-top: 16px;">
+                <button type="submit" class="btn btn-primary">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

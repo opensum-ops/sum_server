@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Enroll {{ host.hostname or host.name }} — OpenSUM{% endblock %}
+{% block crumb %}<a href="/hosts">Hosts</a> / <a href="/hosts/{{ host.id }}">{{ host.hostname or host.name }}</a> / Enroll{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h2>Enroll {{ host.hostname or host.name }}</h2>
+    <span class="pill pill-pending">token expires {{ expires_at.strftime("%Y-%m-%d %H:%M UTC") }}</span>
+</div>
+
+<div class="card" style="max-width: 760px;">
+    <div class="card-body">
+        <p>
+            <strong>This token is shown once.</strong> If it expires or is lost,
+            generate a new one from the host page.
+        </p>
+
+        <h3 class="step-title">1 &middot; Install the agent</h3>
+        <p class="muted">
+            Install <span class="mono">sum-agent</span> on the target host
+            (release binary or wheel), then run the following as the user that
+            will run the agent.
+        </p>
+
+        <h3 class="step-title">2 &middot; Configure and enroll</h3>
+        <div class="code-block" id="cb-enroll">
+            <button type="button" class="copy-btn" data-target="cb-enroll">Copy</button>
+            <pre>export SUM_AGENT_SERVER_URL={{ server_url }}
+sum-agent enroll --token {{ enrollment_token }}</pre>
+        </div>
+
+        <h3 class="step-title">3 &middot; Run it</h3>
+        <div class="code-block" id="cb-run">
+            <button type="button" class="copy-btn" data-target="cb-run">Copy</button>
+            <pre>sum-agent run</pre>
+        </div>
+
+        <h3 class="step-title">Optional &middot; systemd service</h3>
+        <div class="code-block" id="cb-systemd">
+            <button type="button" class="copy-btn" data-target="cb-systemd">Copy</button>
+            <pre>cat &lt;&lt;'EOF' | sudo tee /etc/systemd/system/sum-agent.service
+[Unit]
+Description=OpenSUM agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=SUM_AGENT_SERVER_URL={{ server_url }}
+ExecStart=/usr/local/bin/sum-agent run
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now sum-agent</pre>
+        </div>
+        <p class="muted">
+            The ordering on <span class="mono">network-online.target</span> also
+            matters at shutdown: it lets the agent send its goodbye report
+            before the network goes away, so the host shows as
+            <em>rebooting</em>/<em>powered off</em> instead of <em>unreachable</em>.
+        </p>
+
+        <div style="margin-top: 20px;">
+            <a href="/hosts/{{ host.id }}" class="btn btn-primary">Go to host page</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.querySelectorAll(".copy-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const pre = document.getElementById(btn.dataset.target).querySelector("pre");
+            navigator.clipboard.writeText(pre.textContent).then(() => {
+                btn.textContent = "Copied";
+                setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+            });
+        });
+    });
+</script>
+{% endblock %}
