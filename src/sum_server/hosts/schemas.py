@@ -1,4 +1,4 @@
-"""Server request/response schemas."""
+"""Host request/response schemas."""
 
 from __future__ import annotations
 
@@ -8,36 +8,36 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-ServerStatus = Literal["provisioning", "active", "decommissioned"]
+HostStatus = Literal["provisioning", "active", "decommissioned"]
 
 
-class ServerCreate(BaseModel):
+class HostCreate(BaseModel):
     name: str = Field(min_length=1, max_length=256)
     hostname: str | None = Field(default=None, max_length=256)
     description: str | None = Field(default=None, max_length=2048)
-    status: ServerStatus = "provisioning"
+    status: HostStatus = "provisioning"
 
 
-class ServerUpdate(BaseModel):
+class HostUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
     hostname: str | None = Field(default=None, max_length=256)
     description: str | None = Field(default=None, max_length=2048)
-    status: ServerStatus | None = None
+    status: HostStatus | None = None
 
 
-class ServerResponse(BaseModel):
+class HostResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     name: str
     hostname: str | None
     description: str | None
-    status: ServerStatus
+    status: HostStatus
     version: int
     created_at: dt.datetime
 
 
-class ServerWithOwnersResponse(ServerResponse):
+class HostWithOwnersResponse(HostResponse):
     user_owners: list[uuid.UUID] = []
     team_owners: list[uuid.UUID] = []
 

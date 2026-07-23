@@ -21,9 +21,9 @@ async def _ui_login(client: AsyncClient, email: str, password: str) -> str:
 
 
 async def test_page_requires_login(client: AsyncClient) -> None:
-    r = await client.get("/servers")
+    r = await client.get("/hosts")
     assert r.status_code == 303
-    assert r.headers["location"] == "/login?next=/servers"
+    assert r.headers["location"] == "/login?next=/hosts"
 
 
 async def test_login_page_sets_csrf_cookie(client: AsyncClient) -> None:
@@ -69,36 +69,36 @@ async def test_login_open_redirect_guarded(client: AsyncClient, admin_user: Any)
         },
     )
     assert r.status_code == 303
-    assert r.headers["location"] == "/servers"
+    assert r.headers["location"] == "/hosts"
 
 
 async def test_login_logout_flow(client: AsyncClient, admin_user: Any) -> None:
     csrf = await _ui_login(client, "admin@example.com", "admin-pw-1234")
-    r = await client.get("/servers")
+    r = await client.get("/hosts")
     assert r.status_code == 200
-    assert "Servers" in r.text
+    assert "Hosts" in r.text
 
     r = await client.post("/logout", data={"csrf_token": csrf})
     assert r.status_code == 303
-    r = await client.get("/servers")
+    r = await client.get("/hosts")
     assert r.status_code == 303  # session revoked server-side
 
 
 async def test_server_list_and_detail_render(client: AsyncClient, admin_token: str) -> None:
     cr = await client.post(
-        "/api/v1/servers",
+        "/api/v1/hosts",
         headers=auth_h(admin_token),
         json={"name": "ui-node", "hostname": "ui-node.example.com", "status": "active"},
     )
     assert cr.status_code == 201, cr.text
-    server_id = cr.json()["id"]
+    host_id = cr.json()["id"]
 
     await _ui_login(client, "admin@example.com", "admin-pw-1234")
-    r = await client.get("/servers")
+    r = await client.get("/hosts")
     assert r.status_code == 200
     assert "ui-node" in r.text
 
-    r = await client.get(f"/servers/{server_id}")
+    r = await client.get(f"/hosts/{host_id}")
     assert r.status_code == 200
     assert "ui-node.example.com" in r.text
     assert "Components" in r.text  # detail page renders the inventory section
@@ -108,15 +108,15 @@ async def test_server_detail_hidden_from_non_owner(
     client: AsyncClient, admin_token: str, regular_user: Any
 ) -> None:
     cr = await client.post(
-        "/api/v1/servers",
+        "/api/v1/hosts",
         headers=auth_h(admin_token),
         json={"name": "hidden-node", "status": "active"},
     )
     assert cr.status_code == 201
-    server_id = cr.json()["id"]
+    host_id = cr.json()["id"]
 
     await _ui_login(client, "user@example.com", "user-pw-1234")
-    r = await client.get(f"/servers/{server_id}")
+    r = await client.get(f"/hosts/{host_id}")
     assert r.status_code == 403
 
 

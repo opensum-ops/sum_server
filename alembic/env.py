@@ -20,10 +20,10 @@ from sum_server.auth.models import AgentToken, SessionToken  # noqa: F401
 from sum_server.components.models import Component  # noqa: F401
 from sum_server.core.audit import AuditEntry  # noqa: F401
 from sum_server.core.db import Base
-from sum_server.servers.models import (  # noqa: F401
-    Server,
-    server_owner_teams,
-    server_owner_users,
+from sum_server.hosts.models import (  # noqa: F401
+    Host,
+    host_owner_teams,
+    host_owner_users,
 )
 from sum_server.settings import get_settings
 from sum_server.teams.models import Team, TeamMembership  # noqa: F401

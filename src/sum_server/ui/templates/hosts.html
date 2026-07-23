@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Servers — OpenSUM{% endblock %}
-{% block crumb %}Servers{% endblock %}
+{% block title %}Hosts — OpenSUM{% endblock %}
+{% block crumb %}Hosts{% endblock %}
 
 {% block content %}
 <div class="page-head">
-    <h2>Servers</h2>
+    <h2>Hosts</h2>
 </div>
 <div class="card">
     <div class="table-wrap">
@@ -18,15 +18,15 @@
                 </tr>
             </thead>
             <tbody>
-                {% for s in servers %}
+                {% for s in hosts %}
                 <tr>
-                    <td><a href="/servers/{{ s.id }}">{{ s.name }}</a></td>
+                    <td><a href="/hosts/{{ s.id }}">{{ s.name }}</a></td>
                     <td class="muted">{{ s.hostname or "—" }}</td>
                     <td><span class="pill pill-{{ s.status }}">{{ s.status }}</span></td>
                     <td class="muted">{{ s.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
-                <tr class="empty-row"><td colspan="4">No servers visible to you yet.</td></tr>
+                <tr class="empty-row"><td colspan="4">No hosts visible to you yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

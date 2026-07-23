@@ -29,11 +29,11 @@ async def get_component(session: AsyncSession, component_id: uuid.UUID) -> Compo
 async def list_components(
     session: AsyncSession,
     *,
-    server_id: uuid.UUID,
+    host_id: uuid.UUID,
     kind: str | None = None,
     include_absent: bool = False,
 ) -> list[Component]:
-    stmt = select(Component).where(Component.server_id == server_id)
+    stmt = select(Component).where(Component.host_id == host_id)
     if kind is not None:
         stmt = stmt.where(Component.kind == kind)
     if not include_absent:
@@ -43,15 +43,15 @@ async def list_components(
 
 
 async def _find_by_identity(
-    session: AsyncSession, *, server_id: uuid.UUID, kind: str, serial: str | None, slot: str | None
+    session: AsyncSession, *, host_id: uuid.UUID, kind: str, serial: str | None, slot: str | None
 ) -> Component | None:
-    """Identity preference: ``(server, kind, serial)`` if serial present,
-    else ``(server, kind, slot)``."""
+    """Identity preference: ``(host, kind, serial)`` if serial present,
+    else ``(host, kind, slot)``."""
     if serial is not None:
         return (
             await session.execute(
                 select(Component).where(
-                    Component.server_id == server_id,
+                    Component.host_id == host_id,
                     Component.kind == kind,
                     Component.serial == serial,
                 )
@@ -61,7 +61,7 @@ async def _find_by_identity(
         return (
             await session.execute(
                 select(Component).where(
-                    Component.server_id == server_id,
+                    Component.host_id == host_id,
                     Component.kind == kind,
                     Component.serial.is_(None),
                     Component.slot == slot,
@@ -74,19 +74,19 @@ async def _find_by_identity(
 async def _find_slot_swap(
     session: AsyncSession,
     *,
-    server_id: uuid.UUID,
+    host_id: uuid.UUID,
     kind: str,
     slot: str | None,
     serial: str | None,
 ) -> Component | None:
     """Return any existing present component at the same
-    ``(server, kind, slot)`` with a different serial."""
+    ``(host, kind, slot)`` with a different serial."""
     if serial is None or slot is None:
         return None
     return (
         await session.execute(
             select(Component).where(
-                Component.server_id == server_id,
+                Component.host_id == host_id,
                 Component.kind == kind,
                 Component.slot == slot,
                 Component.serial.isnot(None),
@@ -100,20 +100,20 @@ async def _find_slot_swap(
 async def ingest_inventory(
     session: AsyncSession,
     *,
-    server_id: uuid.UUID,
+    host_id: uuid.UUID,
     entries: Sequence[ComponentIngest],
 ) -> dict[str, int]:
-    """Upsert an inventory snapshot for a server.
+    """Upsert an inventory snapshot for a host.
 
     Components not mentioned in the snapshot are marked ``present=false``. Serial
-    changes at the same slot emit a ``server.component_swap`` audit event and
+    changes at the same slot emit a ``host.component_swap`` audit event and
     the old component is marked absent.
     """
-    from sum_server.servers.service import get_server
+    from sum_server.hosts.service import get_host
 
-    server = await get_server(session, server_id)
-    if server is None:
-        raise NotFoundError("server not found")
+    host = await get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
 
     now = _utcnow()
     counts = {"created": 0, "updated": 0, "marked_absent": 0, "swaps": 0}
@@ -122,7 +122,7 @@ async def ingest_inventory(
     for entry in entries:
         swap_target = await _find_slot_swap(
             session,
-            server_id=server_id,
+            host_id=host_id,
             kind=entry.kind,
             slot=entry.slot,
             serial=entry.serial,
@@ -132,9 +132,9 @@ async def ingest_inventory(
             swap_target.last_seen = now
             await write_audit(
                 session,
-                action="server.component_swap",
-                target_kind="server",
-                target_id=server_id,
+                action="host.component_swap",
+                target_kind="host",
+                target_id=host_id,
                 payload={
                     "kind": entry.kind,
                     "slot": entry.slot,
@@ -145,7 +145,7 @@ async def ingest_inventory(
             counts["swaps"] += 1
         existing = await _find_by_identity(
             session,
-            server_id=server_id,
+            host_id=host_id,
             kind=entry.kind,
             serial=entry.serial,
             slot=entry.slot,
@@ -153,7 +153,7 @@ async def ingest_inventory(
         if existing is None:
             comp = Component(
                 id=new_id(),
-                server_id=server_id,
+                host_id=host_id,
                 kind=entry.kind,
                 vendor=entry.vendor,
                 model=entry.model,
@@ -182,9 +182,7 @@ async def ingest_inventory(
     all_present = (
         (
             await session.execute(
-                select(Component).where(
-                    Component.server_id == server_id, Component.present.is_(True)
-                )
+                select(Component).where(Component.host_id == host_id, Component.present.is_(True))
             )
         )
         .scalars()
@@ -199,8 +197,8 @@ async def ingest_inventory(
     await write_audit(
         session,
         action="agent.inventory_submitted",
-        target_kind="server",
-        target_id=server_id,
+        target_kind="host",
+        target_id=host_id,
         payload=counts,
     )
     return counts

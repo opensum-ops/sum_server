@@ -28,5 +28,5 @@ class MeResponse(BaseModel):
 
 class AgentTokenResponse(BaseModel):
     agent_token: str
-    server_id: uuid.UUID
+    host_id: uuid.UUID
     signing_public_key: str

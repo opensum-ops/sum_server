@@ -10,11 +10,11 @@
 <form method="get" action="/audit" class="filter-bar">
     <div class="field">
         <label for="f-action">Action</label>
-        <input id="f-action" name="action" type="text" value="{{ action_filter or '' }}" placeholder="e.g. server.create">
+        <input id="f-action" name="action" type="text" value="{{ action_filter or '' }}" placeholder="e.g. host.create">
     </div>
     <div class="field">
         <label for="f-target">Target kind</label>
-        <input id="f-target" name="target_kind" type="text" value="{{ target_kind_filter or '' }}" placeholder="e.g. server">
+        <input id="f-target" name="target_kind" type="text" value="{{ target_kind_filter or '' }}" placeholder="e.g. host">
     </div>
     <button type="submit" class="btn btn-ghost">Apply</button>
 </form>

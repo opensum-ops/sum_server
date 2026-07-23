@@ -49,7 +49,7 @@ async def resolve_actor_from_token(session: AsyncSession, raw_token: str) -> Act
         if agent.expires_at is not None and agent.expires_at <= now:
             return None
         agent.last_seen_at = now
-        return Actor(kind="agent", id=agent.server_id)
+        return Actor(kind="agent", id=agent.host_id)
 
     return None
 
@@ -145,15 +145,15 @@ async def revoke_all_user_sessions(
 async def mint_agent_token(
     session: AsyncSession,
     *,
-    server_id: uuid.UUID,
+    host_id: uuid.UUID,
     ip: str | None,
 ) -> tuple[str, AgentToken]:
-    """Create a new agent token, revoking any prior active token for the server."""
+    """Create a new agent token, revoking any prior active token for the host."""
     existing = (
         (
             await session.execute(
                 select(AgentToken).where(
-                    AgentToken.server_id == server_id, AgentToken.revoked_at.is_(None)
+                    AgentToken.host_id == host_id, AgentToken.revoked_at.is_(None)
                 )
             )
         )
@@ -171,7 +171,7 @@ async def mint_agent_token(
         expires_at = now + dt.timedelta(seconds=settings.agent_token_ttl_seconds)
     tok = AgentToken(
         id=new_id(),
-        server_id=server_id,
+        host_id=host_id,
         token_hash=token_hash,
         expires_at=expires_at,
         ip=ip,

@@ -12,29 +12,29 @@ from sum_server.components.schemas import ComponentKind, ComponentResponse
 from sum_server.core.db import SessionDep
 from sum_server.core.deps import UserActor
 from sum_server.core.errors import ForbiddenError, NotFoundError
-from sum_server.servers.service import get_server, user_can_read
+from sum_server.hosts.service import get_host, user_can_read
 from sum_server.users.service import get_user
 
 router = APIRouter(tags=["components"])
 
 
-@router.get("/servers/{server_id}/components", response_model=list[ComponentResponse])
-async def list_server_components(
-    server_id: uuid.UUID,
+@router.get("/hosts/{host_id}/components", response_model=list[ComponentResponse])
+async def list_host_components(
+    host_id: uuid.UUID,
     actor: UserActor,
     session: SessionDep,
     kind: Annotated[ComponentKind | None, Query()] = None,
     include_absent: Annotated[bool, Query()] = False,
 ) -> list[ComponentResponse]:
     assert actor.id is not None
-    server = await get_server(session, server_id)
-    if server is None:
-        raise NotFoundError("server not found")
+    host = await get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
     user = await get_user(session, actor.id)
-    if user is None or (not user.is_admin and not await user_can_read(session, server, actor.id)):
+    if user is None or (not user.is_admin and not await user_can_read(session, host, actor.id)):
         raise ForbiddenError("not visible")
     rows = await svc.list_components(
-        session, server_id=server_id, kind=kind, include_absent=include_absent
+        session, host_id=host_id, kind=kind, include_absent=include_absent
     )
     return [ComponentResponse.model_validate(c) for c in rows]
 
@@ -49,10 +49,10 @@ async def get_component(
     if comp is None:
         raise NotFoundError("component not found")
     assert actor.id is not None
-    server = await get_server(session, comp.server_id)
-    if server is None:
-        raise NotFoundError("server not found")
+    host = await get_host(session, comp.host_id)
+    if host is None:
+        raise NotFoundError("host not found")
     user = await get_user(session, actor.id)
-    if user is None or (not user.is_admin and not await user_can_read(session, server, actor.id)):
+    if user is None or (not user.is_admin and not await user_can_read(session, host, actor.id)):
         raise ForbiddenError("not visible")
     return ComponentResponse.model_validate(comp)
