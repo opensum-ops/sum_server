@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ group.name }} — OpenSUM{% endblock %}
+{% block crumb %}<a href="/groups">Groups</a> / {{ group.name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h2>{{ group.name }}</h2>
+    {% if is_global %}<span class="pill pill-pending">implicit root</span>{% endif %}
+    {% if is_admin and not is_global and not children %}
+    <form method="post" action="/groups/{{ group.id }}/delete" class="inline-form" style="margin-left: auto;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-danger">Delete group</button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="detail-grid">
+    <div class="card">
+        <div class="card-header"><span class="card-title">About</span></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Parent</dt>
+                <dd>{% if parent %}<a href="/groups/{{ parent.id }}">{{ parent.name }}</a>{% else %}—{% endif %}</dd>
+                <dt>Description</dt><dd>{{ group.description or "—" }}</dd>
+                <dt>Children</dt>
+                <dd>
+                    {% for c in children %}<div><a href="/groups/{{ c.id }}">{{ c.name }}</a></div>
+                    {% else %}<span class="muted">none</span>{% endfor %}
+                </dd>
+            </dl>
+            {% if is_admin %}
+            <form method="post" action="/groups/{{ group.id }}/update">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% if not is_global %}
+                <label for="ge-name">Rename</label>
+                <input id="ge-name" name="name" type="text" class="field" value="{{ group.name }}">
+                <label for="ge-parent">Parent</label>
+                <select id="ge-parent" name="parent_id" class="field">
+                    {% for g in parent_options %}
+                    <option value="{{ g.id }}" {% if g.id == group.parent_id %}selected{% endif %}>{{ g.name }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+                <label for="ge-desc">Description</label>
+                <input id="ge-desc" name="description" type="text" class="field" value="{{ group.description or '' }}">
+                <div style="margin-top: 12px;">
+                    <button type="submit" class="btn btn-ghost">Save</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><span class="card-title">Parameters</span></div>
+        <div class="card-body">
+            {% for p in params %}
+            <div class="param-row">
+                <span class="mono">{{ p.key }}</span> = <span class="mono">{{ p.value | tojson }}</span>
+                {% if is_admin %}
+                <form method="post" action="/groups/{{ group.id }}/params/delete" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="key" value="{{ p.key }}">
+                    <button type="submit" class="btn btn-danger btn-sm">Unset</button>
+                </form>
+                {% endif %}
+            </div>
+            {% else %}<span class="muted">No parameters on this group.</span>{% endfor %}
+            {% if is_admin %}
+            <form method="post" action="/groups/{{ group.id }}/params/set">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="filter-bar" style="margin-top: 12px;">
+                    <input type="text" name="key" class="field" placeholder="key" required>
+                    <input type="text" name="value" class="field" placeholder="value (JSON or text)" required>
+                    <button type="submit" class="btn btn-ghost">Set</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="section card">
+    <div class="card-header"><span class="card-title">Members</span></div>
+    <div class="card-body">
+        {% if is_global %}
+        <p class="muted">Every host is an implicit member of the global group.</p>
+        {% else %}
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th>Host</th><th>State</th><th></th></tr></thead>
+                <tbody>
+                    {% for h in members %}
+                    <tr>
+                        <td><a href="/hosts/{{ h.id }}">{{ h.hostname or h.name }}</a></td>
+                        <td><span class="pill pill-{{ h.presence }}">{{ h.presence | replace("_", " ") }}</span></td>
+                        <td>
+                            {% if is_admin %}
+                            <form method="post" action="/groups/{{ group.id }}/members/remove" class="inline-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <input type="hidden" name="host_id" value="{{ h.id }}">
+                                <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr class="empty-row"><td colspan="3">No members yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if is_admin %}
+        <form method="post" action="/groups/{{ group.id }}/members/add">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="filter-bar" style="margin-top: 12px;">
+                <input type="text" name="identifier" class="field" placeholder="hostname or name" required>
+                <button type="submit" class="btn btn-ghost">Add member</button>
+            </div>
+        </form>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

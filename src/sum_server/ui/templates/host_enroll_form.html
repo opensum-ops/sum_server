@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Enroll host — OpenSUM{% endblock %}
+{% block crumb %}<a href="/hosts">Hosts</a> / Enroll host{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h2>Enroll a new host</h2>
+</div>
+
+<div class="card" style="max-width: 560px;">
+    <div class="card-header"><span class="card-title">Host details</span></div>
+    <div class="card-body">
+        <p class="muted">
+            This creates the host record and a one-time enrollment token. The
+            agent reports the real hostname on first inventory, so the name is
+            just a label until then.
+        </p>
+        <form method="post" action="/hosts/enroll">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="e-name">Name (optional)</label>
+            <input id="e-name" name="name" type="text" class="field" placeholder="auto-generated when empty">
+            <label for="e-desc">Description (optional)</label>
+            <input id="e-desc" name="description" type="text" class="field" placeholder="rack 4, homelab VM, …">
+            <label for="e-ttl">Token validity</label>
+            <select id="e-ttl" name="ttl_seconds" class="field">
+                <option value="900">15 minutes</option>
+                <option value="3600" selected>1 hour</option>
+                <option value="86400">24 hours</option>
+            </select>
+            <div style="margin-top: 16px;">
+                <button type="submit" class="btn btn-primary">Create host and get token</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

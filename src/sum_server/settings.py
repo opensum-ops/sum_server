@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     presence_online_window_seconds: int = 90
     presence_reboot_grace_seconds: int = 900
 
+    # Public base URL shown in enrollment instructions (falls back to the
+    # request's base URL when empty), e.g. "https://sum.example.com".
+    external_url: str = ""
+
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     log_format: LogFormat = LogFormat.console
     env: Env = Env.dev

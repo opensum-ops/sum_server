@@ -1,11 +1,13 @@
-"""Web UI routes: login/logout + host-rendered pages."""
+"""Web UI routes: login/logout + server-rendered pages (hosts, groups, audit)."""
 
 from __future__ import annotations
 
 import datetime as dt
+import json
 import uuid
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -19,6 +21,8 @@ from sum_server.core.db import SessionDep
 from sum_server.core.errors import AuthError, ForbiddenError, NotFoundError
 from sum_server.core.pagination import Cursor
 from sum_server.hosts import service as hosts_svc
+from sum_server.hosts.presence import PRESENCE_VALUES
+from sum_server.hosts.search import HostSearch, search_hosts
 from sum_server.settings import Env, get_settings
 from sum_server.ui.deps import (
     CSRF_COOKIE,
@@ -134,13 +138,174 @@ async def _render(
     return resp
 
 
+# --- Hosts: search + list ---------------------------------------------------
+
+
+def _split_kv(raw: str) -> tuple[str, str] | None:
+    if ":" not in raw:
+        return None
+    key, value = raw.split(":", 1)
+    key, value = key.strip(), value.strip()
+    return (key, value) if key else None
+
+
+def _parse_search(request: Request) -> HostSearch:
+    qp = request.query_params
+    facts = tuple(kv for f in qp.getlist("fact") if (kv := _split_kv(f)) is not None)
+    params = tuple(kv for p in qp.getlist("param") if (kv := _split_kv(p)) is not None)
+    return HostSearch(
+        text=(qp.get("q") or "").strip() or None,
+        presence=qp.get("presence") or None,
+        group=qp.get("group") or None,
+        component=(qp.get("component") or "").strip() or None,
+        facts=facts,
+        parameters=params,
+    )
+
+
+def _filter_chips(search: HostSearch) -> list[dict[str, str]]:
+    """Active filters as chips, each with a URL that removes just itself."""
+    pairs: list[tuple[str, str, str]] = []  # (query key, query value, label)
+    if search.text:
+        pairs.append(("q", search.text, f'text: "{search.text}"'))
+    if search.presence:
+        pairs.append(("presence", search.presence, f"state: {search.presence}"))
+    if search.group:
+        pairs.append(("group", search.group, f"group: {search.group}"))
+    if search.component:
+        pairs.append(("component", search.component, f"component: {search.component}"))
+    for key, value in search.facts:
+        pairs.append(("fact", f"{key}:{value}", f"fact {key} = {value}"))
+    for key, value in search.parameters:
+        pairs.append(("param", f"{key}:{value}", f"param {key} = {value}"))
+
+    chips: list[dict[str, str]] = []
+    for i, (_, _, label) in enumerate(pairs):
+        rest = [(k, v) for j, (k, v, _) in enumerate(pairs) if j != i]
+        chips.append({"label": label, "remove_url": "/hosts?" + urlencode(rest)})
+    return chips
+
+
 @router.get("/hosts", response_class=HTMLResponse)
 async def hosts_page(request: Request, session: SessionDep, user: UiUser) -> HTMLResponse:
+    from sum_server.groups.service import list_groups
+
     assert user.id is not None
-    rows = await hosts_svc.list_hosts_visible_to(
-        session, actor_user_id=user.id, limit=200, cursor=None
+    search = _parse_search(request)
+    results = await search_hosts(session, actor_user_id=user.id, search=search)
+    groups = await list_groups(session)
+    return await _render(
+        request,
+        session,
+        user.id,
+        "hosts.html",
+        "hosts",
+        {
+            "results": results,
+            "search": search,
+            "chips": _filter_chips(search),
+            "fact_keys": [k for k, _ in search.facts],
+            "param_keys": [k for k, _ in search.parameters],
+            "groups": groups,
+            "presence_values": PRESENCE_VALUES,
+        },
     )
-    return await _render(request, session, user.id, "hosts.html", "hosts", {"hosts": rows[:200]})
+
+
+# --- Hosts: enrollment wizard ----------------------------------------------
+# Registered before /hosts/{host_id} so the literal path wins.
+
+
+def _server_url(request: Request) -> str:
+    configured = get_settings().external_url.strip()
+    return configured.rstrip("/") if configured else str(request.base_url).rstrip("/")
+
+
+@router.get("/hosts/enroll", response_class=HTMLResponse)
+async def host_enroll_form(request: Request, session: SessionDep, user: UiUser) -> HTMLResponse:
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    return await _render(request, session, user.id, "host_enroll_form.html", "hosts", {})
+
+
+@router.post("/hosts/enroll", response_class=HTMLResponse)
+async def host_enroll_create(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    csrf_token: Annotated[str, Form()],
+    name: Annotated[str, Form()] = "",
+    description: Annotated[str, Form()] = "",
+    ttl_seconds: Annotated[int, Form()] = 3600,
+) -> HTMLResponse:
+    from sum_server.agents.service import create_enrollment
+    from sum_server.hosts.schemas import HostCreate
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    host_name = name.strip() or f"host-{dt.datetime.now(tz=dt.UTC):%Y%m%d-%H%M%S}"
+    ttl = min(max(ttl_seconds, 60), 86400)
+    async with session.begin():
+        host = await hosts_svc.create_host(
+            session,
+            HostCreate(name=host_name, description=description.strip() or None),
+        )
+        raw, enr = await create_enrollment(session, host_id=host.id, actor=user, ttl_seconds=ttl)
+        host_id, expires_at = host.id, enr.expires_at
+    host2 = await hosts_svc.get_host(session, host_id)
+    return await _render(
+        request,
+        session,
+        user.id,
+        "host_enroll.html",
+        "hosts",
+        {
+            "host": host2,
+            "enrollment_token": raw,
+            "expires_at": expires_at,
+            "server_url": _server_url(request),
+        },
+    )
+
+
+@router.post("/hosts/{host_id}/enroll-token", response_class=HTMLResponse)
+async def host_enroll_token(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+) -> HTMLResponse:
+    from sum_server.agents.service import create_enrollment
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        raw, enr = await create_enrollment(session, host_id=host_id, actor=user, ttl_seconds=None)
+        expires_at = enr.expires_at
+    host = await hosts_svc.get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
+    return await _render(
+        request,
+        session,
+        user.id,
+        "host_enroll.html",
+        "hosts",
+        {
+            "host": host,
+            "enrollment_token": raw,
+            "expires_at": expires_at,
+            "server_url": _server_url(request),
+        },
+    )
+
+
+# --- Hosts: detail (tabbed) -------------------------------------------------
+
+_HOST_TABS = ("overview", "storage", "network", "hardware", "groups")
 
 
 @router.get("/hosts/{host_id}", response_class=HTMLResponse)
@@ -149,18 +314,40 @@ async def host_detail_page(
     session: SessionDep,
     user: UiUser,
     host_id: uuid.UUID,
+    tab: str = "overview",
 ) -> HTMLResponse:
+    from sum_server.groups.service import (
+        effective_parameters_for_host,
+        list_groups,
+        list_groups_for_host,
+        list_host_parameters,
+    )
+    from sum_server.hosts.facts import list_facts
+    from sum_server.teams.service import get_team
+    from sum_server.users.service import get_user
+
     assert user.id is not None
     host = await hosts_svc.get_host(session, host_id)
     if host is None:
         raise NotFoundError("host not found")
     if not await hosts_svc.user_can_read(session, host, user.id):
         raise ForbiddenError("not visible")
-
-    from sum_server.teams.service import get_team
-    from sum_server.users.service import get_user
+    if tab not in _HOST_TABS:
+        tab = "overview"
 
     components = await components_svc.list_components(session, host_id=host_id, include_absent=True)
+    by_kind: dict[str, list[object]] = {}
+    for c in components:
+        by_kind.setdefault(c.kind, []).append(c)
+    facts = await list_facts(session, host_id=host_id)
+    facts_map = {f.key: f.value for f in facts}
+    member_groups = await list_groups_for_host(session, host_id=host_id)
+    member_ids = {g.id for g in member_groups}
+    addable_groups = [
+        g for g in await list_groups(session) if g.id not in member_ids and g.name != "global"
+    ]
+    host_params = await list_host_parameters(session, host_id=host_id)
+    effective = await effective_parameters_for_host(session, host_id=host_id)
     user_owners = [
         u
         for uid in await hosts_svc.get_user_owner_ids(session, host_id)
@@ -179,11 +366,109 @@ async def host_detail_page(
         "hosts",
         {
             "host": host,
-            "components": components,
+            "tab": tab,
+            "tabs": _HOST_TABS,
+            "components_by_kind": by_kind,
+            "facts": facts,
+            "facts_map": facts_map,
+            "member_groups": member_groups,
+            "addable_groups": addable_groups,
+            "host_params": host_params,
+            "effective_params": effective,
             "user_owners": user_owners,
             "team_owners": team_owners,
         },
     )
+
+
+# --- Hosts: parameter + group membership actions ----------------------------
+
+
+def _parse_param_value(raw: str) -> object:
+    """JSON if it parses, plain string otherwise."""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+@router.post("/hosts/{host_id}/params/set")
+async def host_param_set(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    key: Annotated[str, Form()],
+    value: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sum_server.groups.routes import checked_param_key
+    from sum_server.groups.service import set_host_parameter
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    key = checked_param_key(key.strip())
+    await _require_can_manage(session, host_id, user.id)
+    async with session.begin():
+        await set_host_parameter(session, host_id=host_id, key=key, value=_parse_param_value(value))
+    return RedirectResponse(f"/hosts/{host_id}?tab=groups", status_code=303)
+
+
+@router.post("/hosts/{host_id}/params/delete")
+async def host_param_delete(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    key: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sum_server.groups.service import unset_host_parameter
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_can_manage(session, host_id, user.id)
+    async with session.begin():
+        await unset_host_parameter(session, host_id=host_id, key=key)
+    return RedirectResponse(f"/hosts/{host_id}?tab=groups", status_code=303)
+
+
+@router.post("/hosts/{host_id}/groups/add")
+async def host_group_add(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    group_id: Annotated[uuid.UUID, Form()],
+) -> RedirectResponse:
+    from sum_server.groups.service import add_member
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        await add_member(session, group_id=group_id, host_id=host_id)
+    return RedirectResponse(f"/hosts/{host_id}?tab=groups", status_code=303)
+
+
+@router.post("/hosts/{host_id}/groups/remove")
+async def host_group_remove(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    group_id: Annotated[uuid.UUID, Form()],
+) -> RedirectResponse:
+    from sum_server.groups.service import remove_member
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        await remove_member(session, group_id=group_id, host_id=host_id)
+    return RedirectResponse(f"/hosts/{host_id}?tab=groups", status_code=303)
 
 
 async def _require_can_manage(session: SessionDep, host_id: uuid.UUID, actor_id: uuid.UUID) -> None:
@@ -253,9 +538,316 @@ async def owners_remove(
 async def _require_admin_ui(session: SessionDep, actor_id: uuid.UUID) -> None:
     from sum_server.users.service import get_user
 
-    user = await get_user(session, actor_id)
-    if user is None or not user.is_admin:
+    ok = False
+    try:
+        user = await get_user(session, actor_id)
+        # Read attributes before the rollback expires the instance.
+        ok = user is not None and user.is_admin
+    finally:
+        # Release the auto-begun read transaction so write handlers can
+        # open their own with ``async with session.begin()``.
+        await session.rollback()
+    if not ok:
         raise ForbiddenError("admin-only page")
+
+
+# --- Groups pages -----------------------------------------------------------
+
+
+@router.get("/groups", response_class=HTMLResponse)
+async def groups_page(request: Request, session: SessionDep, user: UiUser) -> HTMLResponse:
+    from sqlalchemy import func
+
+    from sum_server.groups.models import Group, GroupParameter, host_groups
+    from sum_server.groups.service import list_groups
+
+    assert user.id is not None
+    groups = await list_groups(session)
+    children: dict[uuid.UUID | None, list[Group]] = {}
+    for g in groups:
+        children.setdefault(g.parent_id, []).append(g)
+
+    member_counts: dict[uuid.UUID, int] = dict(
+        (
+            await session.execute(
+                select(host_groups.c.group_id, func.count()).group_by(host_groups.c.group_id)
+            )
+        )
+        .tuples()
+        .all()
+    )
+    param_counts: dict[uuid.UUID, int] = dict(
+        (
+            await session.execute(
+                select(GroupParameter.group_id, func.count()).group_by(GroupParameter.group_id)
+            )
+        )
+        .tuples()
+        .all()
+    )
+
+    rows: list[dict[str, object]] = []
+
+    def _walk(parent_id: uuid.UUID | None, depth: int) -> None:
+        for g in children.get(parent_id, []):
+            rows.append(
+                {
+                    "group": g,
+                    "depth": depth,
+                    "members": member_counts.get(g.id, 0),
+                    "params": param_counts.get(g.id, 0),
+                }
+            )
+            _walk(g.id, depth + 1)
+
+    _walk(None, 0)
+    return await _render(
+        request,
+        session,
+        user.id,
+        "groups.html",
+        "groups",
+        {"rows": rows, "groups": groups},
+    )
+
+
+@router.post("/groups/create")
+async def group_create(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    csrf_token: Annotated[str, Form()],
+    name: Annotated[str, Form()],
+    parent_id: Annotated[uuid.UUID, Form()],
+    description: Annotated[str, Form()] = "",
+) -> RedirectResponse:
+    from sum_server.groups.schemas import GroupCreate
+    from sum_server.groups.service import create_group
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    payload = GroupCreate(name=name.strip(), description=description.strip() or None)
+    async with session.begin():
+        group = await create_group(
+            session, name=payload.name, description=payload.description, parent_id=parent_id
+        )
+        group_id = group.id
+    return RedirectResponse(f"/groups/{group_id}", status_code=303)
+
+
+@router.get("/groups/{group_id}", response_class=HTMLResponse)
+async def group_detail_page(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    group_id: uuid.UUID,
+) -> HTMLResponse:
+    from sqlalchemy import select as sa_select
+
+    from sum_server.groups.service import (
+        get_group,
+        list_group_parameters,
+        list_groups,
+        list_member_host_ids,
+    )
+    from sum_server.hosts.models import Host
+
+    assert user.id is not None
+    group = await get_group(session, group_id)
+    if group is None:
+        raise NotFoundError("group not found")
+    groups = await list_groups(session)
+    parent = next((g for g in groups if g.id == group.parent_id), None)
+    children = [g for g in groups if g.parent_id == group.id]
+    params = await list_group_parameters(session, group_id=group_id)
+    member_ids = await list_member_host_ids(session, group_id=group_id)
+    members = (
+        list(
+            (
+                await session.execute(
+                    sa_select(Host).where(Host.id.in_(member_ids)).order_by(Host.name)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if member_ids
+        else []
+    )
+    # Valid reparent targets: anything outside this group's own subtree.
+    subtree = {group.id}
+    changed = True
+    while changed:
+        changed = False
+        for g in groups:
+            if g.parent_id in subtree and g.id not in subtree:
+                subtree.add(g.id)
+                changed = True
+    parent_options = [g for g in groups if g.id not in subtree]
+    is_global = group.parent_id is None and group.name == "global"
+    return await _render(
+        request,
+        session,
+        user.id,
+        "group_detail.html",
+        "groups",
+        {
+            "group": group,
+            "parent": parent,
+            "children": children,
+            "params": params,
+            "members": members,
+            "parent_options": parent_options,
+            "is_global": is_global,
+        },
+    )
+
+
+@router.post("/groups/{group_id}/update")
+async def group_update(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    group_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    description: Annotated[str, Form()] = "",
+    name: Annotated[str, Form()] = "",
+    parent_id: Annotated[str, Form()] = "",
+) -> RedirectResponse:
+    from sum_server.groups.service import get_group, update_group
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    current = await get_group(session, group_id)
+    if current is None:
+        raise NotFoundError("group not found")
+    new_name = name.strip() or None
+    new_parent = uuid.UUID(parent_id) if parent_id else None
+    await session.rollback()
+    async with session.begin():
+        await update_group(
+            session,
+            group_id=group_id,
+            name=new_name if new_name != current.name else None,
+            description=description.strip() or None,
+            parent_id=new_parent if new_parent != current.parent_id else None,
+        )
+    return RedirectResponse(f"/groups/{group_id}", status_code=303)
+
+
+@router.post("/groups/{group_id}/delete")
+async def group_delete(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    group_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sum_server.groups.service import delete_group
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        await delete_group(session, group_id=group_id)
+    return RedirectResponse("/groups", status_code=303)
+
+
+@router.post("/groups/{group_id}/params/set")
+async def group_param_set(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    group_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    key: Annotated[str, Form()],
+    value: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sum_server.groups.routes import checked_param_key
+    from sum_server.groups.service import set_group_parameter
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    key = checked_param_key(key.strip())
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        await set_group_parameter(
+            session, group_id=group_id, key=key, value=_parse_param_value(value)
+        )
+    return RedirectResponse(f"/groups/{group_id}", status_code=303)
+
+
+@router.post("/groups/{group_id}/params/delete")
+async def group_param_delete(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    group_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    key: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sum_server.groups.service import unset_group_parameter
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        await unset_group_parameter(session, group_id=group_id, key=key)
+    return RedirectResponse(f"/groups/{group_id}", status_code=303)
+
+
+@router.post("/groups/{group_id}/members/add")
+async def group_member_add(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    group_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    identifier: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sqlalchemy import or_ as sa_or
+    from sqlalchemy import select as sa_select
+
+    from sum_server.groups.service import add_member
+    from sum_server.hosts.models import Host
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    ident = identifier.strip()
+    host = (
+        await session.execute(
+            sa_select(Host).where(sa_or(Host.hostname == ident, Host.name == ident)).limit(1)
+        )
+    ).scalar_one_or_none()
+    if host is None:
+        raise NotFoundError("host not found")
+    host_id = host.id
+    await session.rollback()
+    async with session.begin():
+        await add_member(session, group_id=group_id, host_id=host_id)
+    return RedirectResponse(f"/groups/{group_id}", status_code=303)
+
+
+@router.post("/groups/{group_id}/members/remove")
+async def group_member_remove(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    group_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    host_id: Annotated[uuid.UUID, Form()],
+) -> RedirectResponse:
+    from sum_server.groups.service import remove_member
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        await remove_member(session, group_id=group_id, host_id=host_id)
+    return RedirectResponse(f"/groups/{group_id}", status_code=303)
 
 
 async def _audit_query(

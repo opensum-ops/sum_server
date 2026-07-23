@@ -9,8 +9,24 @@
     {% if host.status != "active" %}
     <span class="pill pill-{{ host.status }}">{{ host.status }}</span>
     {% endif %}
+    {% if is_admin and host.presence == "pending" %}
+    <form method="post" action="/hosts/{{ host.id }}/enroll-token" class="inline-form" style="margin-left: auto;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-primary">New enrollment token</button>
+    </form>
+    {% endif %}
 </div>
 
+<nav class="tabs">
+    {% for t in tabs %}
+    <a href="/hosts/{{ host.id }}?tab={{ t }}" class="tab {% if tab == t %}active{% endif %}">
+        {{ {"overview": "Overview", "storage": "Storage", "network": "Network",
+            "hardware": "Hardware", "groups": "Groups &amp; Parameters"}[t] | safe }}
+    </a>
+    {% endfor %}
+</nav>
+
+{% if tab == "overview" %}
 <div class="detail-grid">
     <div class="card">
         <div class="card-header"><span class="card-title">Summary</span></div>
@@ -20,6 +36,7 @@
                 <dt>Hostname</dt><dd>{{ host.hostname or "—" }}</dd>
                 <dt>Description</dt><dd>{{ host.description or "—" }}</dd>
                 <dt>Last heartbeat</dt><dd>{{ host.last_heartbeat_at.strftime("%Y-%m-%d %H:%M:%S") if host.last_heartbeat_at else "never" }}</dd>
+                <dt>Boot ID</dt><dd class="mono">{{ host.boot_id or "—" }}</dd>
                 <dt>Created</dt><dd>{{ host.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd>
                 <dt>ID</dt><dd class="mono">{{ host.id }}</dd>
             </dl>
@@ -82,37 +99,241 @@
 </div>
 
 <div class="section card">
-    <div class="card-header"><span class="card-title">Components</span></div>
+    <div class="card-header"><span class="card-title">Facts</span></div>
     <div class="table-wrap">
         <table class="table">
-            <thead>
-                <tr>
-                    <th>Present</th>
-                    <th>Kind</th>
-                    <th>Vendor</th>
-                    <th>Model</th>
-                    <th>Serial</th>
-                    <th>Slot</th>
-                    <th>Last seen</th>
-                </tr>
-            </thead>
+            <thead><tr><th>Key</th><th>Value</th><th>First seen</th><th>Last seen</th></tr></thead>
             <tbody>
-                {% for c in components %}
+                {% for f in facts %}
                 <tr>
-                    <td><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
-                    <td>{{ c.kind }}</td>
-                    <td class="muted">{{ c.vendor or "—" }}</td>
-                    <td>{{ c.model or "—" }}</td>
-                    <td class="mono">{{ c.serial or "—" }}</td>
-                    <td class="mono">{{ c.slot or "—" }}</td>
-                    <td class="muted">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+                    <td class="mono">{{ f.key }}</td>
+                    <td class="mono">{{ f.value | tojson if f.value is not string else f.value }}</td>
+                    <td class="muted">{{ f.first_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+                    <td class="muted">{{ f.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
-                <tr class="empty-row"><td colspan="7">No inventory reported yet.</td></tr>
+                <tr class="empty-row"><td colspan="4">No facts reported yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
 
+{% elif tab == "storage" %}
+<div class="section card">
+    <div class="card-header"><span class="card-title">Disks</span></div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>Present</th><th>Device</th><th>Vendor</th><th>Model</th><th>Serial</th><th>Size</th><th>Bus</th><th>Last seen</th></tr>
+            </thead>
+            <tbody>
+                {% for c in components_by_kind.get("disk", []) %}
+                <tr>
+                    <td><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
+                    <td class="mono">{{ c.slot or "—" }}</td>
+                    <td class="muted">{{ c.vendor or "—" }}</td>
+                    <td>{{ c.model or "—" }}</td>
+                    <td class="mono">{{ c.serial or "—" }}</td>
+                    <td>{{ c.attrs.get("size_bytes", 0) | filesizeformat }}</td>
+                    <td class="mono">{{ c.attrs.get("bus", "—") }}</td>
+                    <td class="muted">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="8">No disks reported.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% elif tab == "network" %}
+<div class="detail-grid">
+    <div class="card">
+        <div class="card-header"><span class="card-title">Addressing</span></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Primary IPv4</dt><dd class="mono">{{ facts_map.get("primary_ipv4", "—") }}</dd>
+                <dt>Primary IPv6</dt><dd class="mono">{{ facts_map.get("primary_ipv6", "—") }}</dd>
+                <dt>Default interface</dt><dd class="mono">{{ facts_map.get("default_iface", "—") }}</dd>
+                <dt>FQDN</dt><dd class="mono">{{ facts_map.get("fqdn", "—") }}</dd>
+            </dl>
+        </div>
+    </div>
+</div>
+<div class="section card">
+    <div class="card-header"><span class="card-title">Interfaces</span></div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>Present</th><th>Interface</th><th>MAC</th><th>Speed</th><th>Driver</th><th>Last seen</th></tr>
+            </thead>
+            <tbody>
+                {% for c in components_by_kind.get("nic", []) %}
+                <tr>
+                    <td><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
+                    <td class="mono">{{ c.slot or "—" }}</td>
+                    <td class="mono">{{ c.attrs.get("mac", "—") }}</td>
+                    <td>{{ c.attrs.get("speed_mbps", 0) }} Mb/s</td>
+                    <td class="mono">{{ c.attrs.get("driver") or "—" }}</td>
+                    <td class="muted">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="6">No network interfaces reported.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% elif tab == "hardware" %}
+<div class="section card">
+    <div class="card-header"><span class="card-title">CPUs</span></div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>Present</th><th>Vendor</th><th>Model</th><th>Cores</th><th>Threads</th><th>Base clock</th></tr></thead>
+            <tbody>
+                {% for c in components_by_kind.get("cpu", []) %}
+                <tr>
+                    <td><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
+                    <td class="muted">{{ c.vendor or "—" }}</td>
+                    <td>{{ c.model or "—" }}</td>
+                    <td>{{ c.attrs.get("cores", "—") }}</td>
+                    <td>{{ c.attrs.get("threads", "—") }}</td>
+                    <td>{{ "%.2f GHz" | format(c.attrs.get("base_hz", 0) / 1000000000) if c.attrs.get("base_hz") else "—" }}</td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="6">No CPUs reported.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="section card">
+    <div class="card-header"><span class="card-title">Memory</span></div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>Present</th><th>Slot</th><th>Size</th><th>Speed</th><th>Form factor</th></tr></thead>
+            <tbody>
+                {% for c in components_by_kind.get("memory", []) %}
+                <tr>
+                    <td><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
+                    <td class="mono">{{ c.slot or c.attrs.get("slot") or "—" }}</td>
+                    <td>{{ c.attrs.get("size_bytes", 0) | filesizeformat }}</td>
+                    <td>{{ c.attrs.get("speed_mts", 0) }} MT/s</td>
+                    <td class="muted">{{ c.attrs.get("form_factor") or "—" }}</td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="5">No memory reported.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="section card">
+    <div class="card-header"><span class="card-title">GPUs</span></div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>Present</th><th>Vendor</th><th>Model</th><th>VRAM</th><th>Driver</th></tr></thead>
+            <tbody>
+                {% for c in components_by_kind.get("gpu", []) %}
+                <tr>
+                    <td><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
+                    <td class="muted">{{ c.vendor or "—" }}</td>
+                    <td>{{ c.model or "—" }}</td>
+                    <td>{{ c.attrs.get("vram_bytes", 0) | filesizeformat }}</td>
+                    <td class="mono">{{ c.attrs.get("driver_version") or "—" }}</td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="5">No GPUs reported.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% elif tab == "groups" %}
+<div class="detail-grid">
+    <div class="card">
+        <div class="card-header"><span class="card-title">Group memberships</span></div>
+        <div class="card-body">
+            {% for g in member_groups %}
+            <div>
+                <a href="/groups/{{ g.id }}">{{ g.name }}</a>
+                {% if is_admin %}
+                <form method="post" action="/hosts/{{ host.id }}/groups/remove" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="group_id" value="{{ g.id }}">
+                    <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                </form>
+                {% endif %}
+            </div>
+            {% else %}<span class="muted">Only the implicit global group.</span>{% endfor %}
+            {% if is_admin and addable_groups %}
+            <form method="post" action="/hosts/{{ host.id }}/groups/add">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="filter-bar" style="margin-top: 12px;">
+                    <select name="group_id" class="field">
+                        {% for g in addable_groups %}
+                        <option value="{{ g.id }}">{{ g.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-ghost">Add to group</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><span class="card-title">Host parameters</span></div>
+        <div class="card-body">
+            {% for p in host_params %}
+            <div class="param-row">
+                <span class="mono">{{ p.key }}</span> = <span class="mono">{{ p.value | tojson }}</span>
+                <form method="post" action="/hosts/{{ host.id }}/params/delete" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="key" value="{{ p.key }}">
+                    <button type="submit" class="btn btn-danger btn-sm">Unset</button>
+                </form>
+            </div>
+            {% else %}<span class="muted">No host-level overrides.</span>{% endfor %}
+            <form method="post" action="/hosts/{{ host.id }}/params/set">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="filter-bar" style="margin-top: 12px;">
+                    <input type="text" name="key" class="field" placeholder="key" required>
+                    <input type="text" name="value" class="field" placeholder='value (JSON or text)' required>
+                    <button type="submit" class="btn btn-ghost">Set</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="section card">
+    <div class="card-header"><span class="card-title">Effective parameters</span></div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>Key</th><th>Value</th><th>Source</th></tr></thead>
+            <tbody>
+                {% for p in effective_params %}
+                <tr>
+                    <td class="mono">{{ p.key }}</td>
+                    <td class="mono">{{ p.value | tojson }}</td>
+                    <td>
+                        {% if p.source_kind == "host" %}
+                        <span class="pill pill-online">this host</span>
+                        {% else %}
+                        <span class="muted">group:</span> {{ p.source_name }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="3">No parameters apply to this host.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

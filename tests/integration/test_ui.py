@@ -101,7 +101,18 @@ async def test_server_list_and_detail_render(client: AsyncClient, admin_token: s
     r = await client.get(f"/hosts/{host_id}")
     assert r.status_code == 200
     assert "ui-node.example.com" in r.text
-    assert "Components" in r.text  # detail page renders the inventory section
+    assert "Summary" in r.text  # overview tab is the default
+    assert "Facts" in r.text
+
+    # Tabs render their sections.
+    r = await client.get(f"/hosts/{host_id}", params={"tab": "storage"})
+    assert "Disks" in r.text
+    r = await client.get(f"/hosts/{host_id}", params={"tab": "network"})
+    assert "Interfaces" in r.text
+    r = await client.get(f"/hosts/{host_id}", params={"tab": "hardware"})
+    assert "CPUs" in r.text
+    r = await client.get(f"/hosts/{host_id}", params={"tab": "groups"})
+    assert "Effective parameters" in r.text
 
 
 async def test_server_detail_hidden_from_non_owner(
