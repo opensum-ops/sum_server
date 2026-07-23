@@ -33,6 +33,31 @@ from sum_server.ui.routes import router as ui_router
 log = structlog.get_logger(__name__)
 
 
+async def _bootstrap_global_group() -> None:
+    """Idempotently ensure the protected ``global`` root group exists."""
+    from sqlalchemy import select
+
+    from sum_server.core.ids import new_id
+    from sum_server.groups.models import GLOBAL_GROUP_NAME, Group
+
+    sm = async_sessionmaker(get_engine(), expire_on_commit=False)
+    async with sm() as session, session.begin():
+        existing = (
+            await session.execute(select(Group).where(Group.name == GLOBAL_GROUP_NAME))
+        ).scalar_one_or_none()
+        if existing is not None:
+            return
+        session.add(
+            Group(
+                id=new_id(),
+                name=GLOBAL_GROUP_NAME,
+                description="Implicit root group; every host is a member.",
+                parent_id=None,
+            )
+        )
+        log.info("global_group_created")
+
+
 async def _bootstrap_admin() -> None:
     """Idempotently create the configured bootstrap admin user (no-op if absent)."""
     settings = get_settings()
@@ -69,6 +94,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     init_engine(settings.database_url)
     signing.load_signing_key(settings.signing_private_key)
     await _bootstrap_admin()
+    await _bootstrap_global_group()
     try:
         yield
     finally:

@@ -12,6 +12,12 @@ from sum_server.core.db import SessionDep
 from sum_server.core.deps import AdminActor, UserActor
 from sum_server.core.errors import ForbiddenError, NotFoundError
 from sum_server.core.pagination import Cursor, Page, page_params
+from sum_server.groups.schemas import (
+    EffectiveParameterResponse,
+    GroupResponse,
+    ParameterResponse,
+    ParameterSet,
+)
 from sum_server.hosts import facts as facts_svc
 from sum_server.hosts import service as svc
 from sum_server.hosts.schemas import (
@@ -124,6 +130,99 @@ async def list_host_facts(
         raise ForbiddenError("not visible")
     rows = await facts_svc.list_facts(session, host_id=host_id)
     return [FactResponse.model_validate(r) for r in rows]
+
+
+async def _require_visible(session: AsyncSession, host_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    host = await svc.get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
+    if not await svc.user_can_read(session, host, actor_id):
+        raise ForbiddenError("not visible")
+
+
+@router.get("/{host_id}/groups", response_model=list[GroupResponse])
+async def list_host_groups(
+    host_id: uuid.UUID,
+    actor: UserActor,
+    session: SessionDep,
+) -> list[GroupResponse]:
+    from sum_server.groups.service import list_groups_for_host
+
+    assert actor.id is not None
+    await _require_visible(session, host_id, actor.id)
+    return [
+        GroupResponse.model_validate(g)
+        for g in await list_groups_for_host(session, host_id=host_id)
+    ]
+
+
+@router.get("/{host_id}/parameters", response_model=list[ParameterResponse])
+async def list_host_parameters(
+    host_id: uuid.UUID,
+    actor: UserActor,
+    session: SessionDep,
+) -> list[ParameterResponse]:
+    from sum_server.groups.service import list_host_parameters as svc_list
+
+    assert actor.id is not None
+    await _require_visible(session, host_id, actor.id)
+    rows = await svc_list(session, host_id=host_id)
+    return [ParameterResponse.model_validate(r) for r in rows]
+
+
+@router.put("/{host_id}/parameters/{key}", response_model=ParameterResponse)
+async def set_host_parameter(
+    host_id: uuid.UUID,
+    key: str,
+    payload: ParameterSet,
+    actor: UserActor,
+    session: SessionDep,
+) -> ParameterResponse:
+    from sum_server.groups.routes import checked_param_key
+    from sum_server.groups.service import set_host_parameter as svc_set
+
+    key = checked_param_key(key)
+    assert actor.id is not None
+    await _require_owner_or_admin(host_id, actor.id, session)
+    async with session.begin():
+        row = await svc_set(session, host_id=host_id, key=key, value=payload.value)
+    return ParameterResponse.model_validate(row)
+
+
+@router.delete("/{host_id}/parameters/{key}", status_code=status.HTTP_204_NO_CONTENT)
+async def unset_host_parameter(
+    host_id: uuid.UUID,
+    key: str,
+    actor: UserActor,
+    session: SessionDep,
+) -> None:
+    from sum_server.groups.service import unset_host_parameter as svc_unset
+
+    assert actor.id is not None
+    await _require_owner_or_admin(host_id, actor.id, session)
+    async with session.begin():
+        found = await svc_unset(session, host_id=host_id, key=key)
+    if not found:
+        raise NotFoundError("parameter not found")
+
+
+@router.get("/{host_id}/effective-parameters", response_model=list[EffectiveParameterResponse])
+async def effective_parameters(
+    host_id: uuid.UUID,
+    actor: UserActor,
+    session: SessionDep,
+) -> list[EffectiveParameterResponse]:
+    from sum_server.groups.service import effective_parameters_for_host
+
+    assert actor.id is not None
+    await _require_visible(session, host_id, actor.id)
+    resolved = await effective_parameters_for_host(session, host_id=host_id)
+    return [
+        EffectiveParameterResponse(
+            key=p.key, value=p.value, source_kind=p.source_kind, source_name=p.source_name
+        )
+        for p in resolved
+    ]
 
 
 @router.patch("/{host_id}", response_model=HostResponse)
