@@ -101,7 +101,7 @@ async def test_server_list_and_detail_render(client: AsyncClient, admin_token: s
     r = await client.get(f"/servers/{server_id}")
     assert r.status_code == 200
     assert "ui-node.example.com" in r.text
-    assert "Run a job" in r.text  # active server offers the dispatch form
+    assert "Components" in r.text  # detail page renders the inventory section
 
 
 async def test_server_detail_hidden_from_non_owner(

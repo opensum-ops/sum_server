@@ -1,4 +1,4 @@
-"""Ed25519 sign/verify + canonical bytes for jobs.
+"""Ed25519 sign/verify + canonical bytes for server-signed payloads.
 
 The signing key is loaded once at startup via :func:`load_signing_key`; subsequent
 calls use the cached value. Canonical bytes are deterministic JSON so the same

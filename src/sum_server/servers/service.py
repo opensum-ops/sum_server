@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import uuid
 
 from sqlalchemy import and_, func, or_, select
@@ -22,10 +21,6 @@ from sum_server.servers.models import (
     server_owner_users,
 )
 from sum_server.servers.schemas import ServerCreate, ServerUpdate
-
-
-def _utcnow() -> dt.datetime:
-    return dt.datetime.now(tz=dt.UTC)
 
 
 async def get_server(session: AsyncSession, server_id: uuid.UUID) -> Server | None:
@@ -217,27 +212,12 @@ async def decommission_server(session: AsyncSession, *, server_id: uuid.UUID) ->
     if server.status == "decommissioned":
         return server
     server.status = "decommissioned"
-    from sum_server.jobs.models import Job
-
-    now = _utcnow()
-    pending = (
-        (
-            await session.execute(
-                select(Job).where(Job.server_id == server_id, Job.status == "pending")
-            )
-        )
-        .scalars()
-        .all()
-    )
-    for j in pending:
-        j.status = "expired"
-        j.expires_at = min(j.expires_at, now)
     await write_audit(
         session,
         action="server.decommission",
         target_kind="server",
         target_id=server_id,
-        payload={"expired_pending_jobs": len(pending)},
+        payload={},
     )
     return server
 

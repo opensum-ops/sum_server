@@ -1,4 +1,4 @@
-"""Agent routes: enrollment lifecycle + agent-side (inventory, jobs)."""
+"""Agent routes: enrollment lifecycle + agent-side (inventory)."""
 
 from __future__ import annotations
 
@@ -15,14 +15,11 @@ from sum_server.agents.schemas import (
     EnrollResponse,
     InventoryIngestRequest,
     InventoryIngestResponse,
-    JobsListResponse,
 )
 from sum_server.components.service import ingest_inventory
 from sum_server.core.db import SessionDep
 from sum_server.core.deps import AdminActor, AgentActor
 from sum_server.core.security.signing import get_public_key_b64
-from sum_server.jobs import service as jobs_svc
-from sum_server.jobs.schemas import JobResponse, JobResultReport, JobResultResponse
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -90,7 +87,7 @@ async def enroll(
     )
 
 
-# Agent-side: inventory + jobs ---------------------------------------------------
+# Agent-side: inventory ----------------------------------------------------------
 
 
 @router.post("/inventory", response_model=InventoryIngestResponse)
@@ -103,48 +100,3 @@ async def submit_inventory(
     async with session.begin():
         counts = await ingest_inventory(session, server_id=agent.id, entries=payload.components)
     return InventoryIngestResponse(**counts)
-
-
-@router.get("/jobs", response_model=JobsListResponse)
-async def poll_jobs(
-    agent: AgentActor,
-    session: SessionDep,
-    limit: int = 50,
-) -> JobsListResponse:
-    assert agent.id is not None
-    rows = await jobs_svc.pending_jobs_for_server(session, server_id=agent.id, limit=limit)
-    return JobsListResponse(
-        jobs=[JobResponse.model_validate(jobs_svc.to_response_payload(j)) for j in rows]
-    )
-
-
-@router.post("/jobs/{job_id}/pickup", response_model=JobResponse)
-async def pickup(
-    job_id: uuid.UUID,
-    agent: AgentActor,
-    session: SessionDep,
-) -> JobResponse:
-    assert agent.id is not None
-    async with session.begin():
-        job = await jobs_svc.pickup_job(session, job_id=job_id, agent_server_id=agent.id)
-    return JobResponse.model_validate(jobs_svc.to_response_payload(job))
-
-
-@router.post("/jobs/{job_id}/result", response_model=JobResultResponse)
-async def report_result(
-    job_id: uuid.UUID,
-    payload: JobResultReport,
-    agent: AgentActor,
-    session: SessionDep,
-) -> JobResultResponse:
-    assert agent.id is not None
-    async with session.begin():
-        result = await jobs_svc.report_result(
-            session,
-            job_id=job_id,
-            agent_server_id=agent.id,
-            status=payload.status,
-            exit_code=payload.exit_code,
-            output=payload.output,
-        )
-    return JobResultResponse.model_validate(result)

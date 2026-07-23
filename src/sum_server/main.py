@@ -1,16 +1,15 @@
 """FastAPI app factory + lifespan.
 
-Starts the async engine, loads the Ed25519 signing key, runs a bootstrap admin
-seed (idempotent), and kicks off a periodic expired-jobs sweeper. Mounts the
-``/api/v1`` router plus health/ready/well-known endpoints.
+Starts the async engine, loads the Ed25519 signing key, and runs a bootstrap
+admin seed (idempotent). Mounts the ``/api/v1`` router plus
+health/ready/well-known endpoints.
 """
 
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
@@ -27,27 +26,11 @@ from sum_server.core.db import dispose_engine, get_engine, get_session, init_eng
 from sum_server.core.errors import install_error_handlers
 from sum_server.core.logging import RequestIdMiddleware, configure_logging
 from sum_server.core.security import signing
-from sum_server.jobs import service as jobs_svc
 from sum_server.settings import get_settings
 from sum_server.ui.deps import LoginRequiredError
 from sum_server.ui.routes import router as ui_router
 
 log = structlog.get_logger(__name__)
-
-
-async def _expiry_sweep_loop(stop: asyncio.Event, interval_seconds: int = 30) -> None:
-    """Periodically flip pending jobs past ``expires_at`` to ``expired``."""
-    sm = async_sessionmaker(get_engine(), expire_on_commit=False)
-    while not stop.is_set():
-        try:
-            async with sm() as session, session.begin():
-                n = await jobs_svc.sweep_expired(session)
-                if n:
-                    log.info("expired_jobs_swept", count=n)
-        except Exception:
-            log.exception("expiry_sweep_failed")
-        with suppress(TimeoutError):
-            await asyncio.wait_for(stop.wait(), timeout=interval_seconds)
 
 
 async def _bootstrap_admin() -> None:
@@ -86,14 +69,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     init_engine(settings.database_url)
     signing.load_signing_key(settings.signing_private_key)
     await _bootstrap_admin()
-
-    stop = asyncio.Event()
-    sweep_task = asyncio.create_task(_expiry_sweep_loop(stop))
     try:
         yield
     finally:
-        stop.set()
-        await asyncio.gather(sweep_task, return_exceptions=True)
         await dispose_engine()
         log.info("stopped")
 

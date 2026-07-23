@@ -1,6 +1,6 @@
 # sum_server
 
-Authoritative backend for OpenSUM: ownership, inventory, jobs, audit. Owns the database, exposes the HTTP API, signs and dispatches jobs, hosts the plugin registry (later), records the audit log.
+Authoritative backend for OpenSUM: ownership, inventory, audit. Owns the database, exposes the HTTP API, serves the web UI, records the audit log.
 
 ## Layout
 
@@ -8,7 +8,7 @@ Authoritative backend for OpenSUM: ownership, inventory, jobs, audit. Owns the d
 
 - `core/` — cross-cutting (settings, db, errors, logging, audit, security primitives)
 - `auth/` — user sessions and agent tokens
-- `users/`, `teams/`, `servers/`, `components/`, `agents/`, `jobs/`, `audit/` — domain modules
+- `users/`, `teams/`, `servers/`, `components/`, `agents/`, `audit/` — domain modules
 - `api/v1.py` — router aggregator mounted at `/api/v1`
 - `main.py` — FastAPI app factory + lifespan
 

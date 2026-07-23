@@ -18,8 +18,6 @@ from sum_server.core.audit import AuditEntry
 from sum_server.core.db import SessionDep
 from sum_server.core.errors import AuthError, ForbiddenError, NotFoundError
 from sum_server.core.pagination import Cursor
-from sum_server.jobs import service as jobs_svc
-from sum_server.jobs.capabilities import known_capabilities
 from sum_server.servers import service as servers_svc
 from sum_server.settings import Env, get_settings
 from sum_server.ui.deps import (
@@ -167,7 +165,6 @@ async def server_detail_page(
     components = await components_svc.list_components(
         session, server_id=server_id, include_absent=True
     )
-    jobs = await jobs_svc.list_jobs_for_server(session, server_id=server_id, limit=50)
     user_owners = [
         u
         for uid in await servers_svc.get_user_owner_ids(session, server_id)
@@ -187,10 +184,8 @@ async def server_detail_page(
         {
             "server": server,
             "components": components,
-            "jobs": jobs,
             "user_owners": user_owners,
             "team_owners": team_owners,
-            "capabilities": known_capabilities(),
         },
     )
 
@@ -258,35 +253,6 @@ async def owners_remove(
             await servers_svc.remove_team_owner(session, server_id=server_id, team_id=owner_id)
         else:
             await servers_svc.remove_user_owner(session, server_id=server_id, user_id=owner_id)
-    return RedirectResponse(f"/servers/{server_id}", status_code=303)
-
-
-@router.post("/servers/{server_id}/jobs/run")
-async def run_job(
-    request: Request,
-    session: SessionDep,
-    user: UiUser,
-    server_id: uuid.UUID,
-) -> RedirectResponse:
-    form = await request.form()
-    check_csrf(request, str(form.get("csrf_token") or ""))
-    assert user.id is not None
-    await _require_can_manage(session, server_id, user.id)
-    capability = str(form.get("capability") or "")
-    payload = {
-        key: str(value)
-        for key, value in form.items()
-        if key not in ("csrf_token", "capability") and isinstance(value, str) and value != ""
-    }
-    async with session.begin():
-        await jobs_svc.create_job(
-            session,
-            server_id=server_id,
-            capability=capability,
-            payload=payload,
-            ttl_seconds=None,
-            actor=user,
-        )
     return RedirectResponse(f"/servers/{server_id}", status_code=303)
 
 

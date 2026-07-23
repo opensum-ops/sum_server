@@ -1,8 +1,7 @@
 """End-to-end agent flow.
 
 admin → create server → enrollment → agent enrolls → submit inventory →
-admin creates a signed job → agent polls → picks up → reports result →
-admin queries audit and sees every state change.
+resubmit with a swapped disk → admin queries audit and sees every state change.
 """
 
 from __future__ import annotations
@@ -40,7 +39,10 @@ async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
     pubkey_b64 = enroll.json()["signing_public_key"]
     assert enroll.json()["server_id"] == server_id
 
-    # 4. Submit inventory
+    # 4. The published signing key is a valid Ed25519 public key
+    assert len(base64.b64decode(pubkey_b64)) == 32
+
+    # 5. Submit inventory
     inv = await client.post(
         "/api/v1/agents/inventory",
         headers=auth_h(agent_token),
@@ -77,46 +79,55 @@ async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
     assert inv.status_code == 200, inv.text
     assert inv.json()["created"] == 2
 
-    # 5. Admin creates a signed job
-    cr = await client.post(
-        f"/api/v1/servers/{server_id}/jobs",
-        headers=auth_h(admin_token),
+    # 6. Resubmit with a different disk in the same slot: swap detected
+    inv2 = await client.post(
+        "/api/v1/agents/inventory",
+        headers=auth_h(agent_token),
         json={
-            "capability": "rename_nic",
-            "payload": {"current_name": "eth0", "new_name": "ens1"},
+            "components": [
+                {
+                    "kind": "disk",
+                    "vendor": "Samsung",
+                    "model": "PM9A3",
+                    "serial": "S6KZNX0T999999",
+                    "slot": "nvme0",
+                    "attrs": {
+                        "kind": "disk",
+                        "size_bytes": 1_920_000_000_000,
+                        "rotation_rpm": 0,
+                        "bus": "nvme",
+                    },
+                },
+                {
+                    "kind": "cpu",
+                    "vendor": "AMD",
+                    "model": "EPYC 7763",
+                    "serial": "CPU-0",
+                    "attrs": {
+                        "kind": "cpu",
+                        "cores": 64,
+                        "threads": 128,
+                        "base_hz": 2_450_000_000,
+                    },
+                },
+            ]
         },
     )
-    assert cr.status_code == 201, cr.text
-    job_id = cr.json()["id"]
-    sig_b64 = cr.json()["signature"]
+    assert inv2.status_code == 200, inv2.text
+    assert inv2.json()["swaps"] == 1
+    assert inv2.json()["created"] == 1
 
-    # 6. Agent polls and finds the job
-    poll = await client.get("/api/v1/agents/jobs", headers=auth_h(agent_token))
-    assert poll.status_code == 200
-    jobs = poll.json()["jobs"]
-    assert any(j["id"] == job_id for j in jobs)
-
-    # 7. Sanity-check the signature material the server published
-    sig = base64.b64decode(sig_b64)
-    pub = base64.b64decode(pubkey_b64)
-    assert len(sig) == 64
-    assert len(pub) == 32
-
-    # 8. Agent picks up the job
-    pu = await client.post(f"/api/v1/agents/jobs/{job_id}/pickup", headers=auth_h(agent_token))
-    assert pu.status_code == 200
-    assert pu.json()["status"] == "picked_up"
-
-    # 9. Agent reports result
-    res = await client.post(
-        f"/api/v1/agents/jobs/{job_id}/result",
-        headers=auth_h(agent_token),
-        json={"status": "completed", "exit_code": 0, "output": {"renamed": True}},
+    # 7. Components reflect the swap: old disk absent, new disk present
+    comps = await client.get(
+        f"/api/v1/servers/{server_id}/components",
+        headers=auth_h(admin_token),
+        params={"include_absent": "true"},
     )
-    assert res.status_code == 200
-    assert res.json()["status"] == "completed"
+    assert comps.status_code == 200
+    disks = {c["serial"]: c["present"] for c in comps.json() if c["kind"] == "disk"}
+    assert disks == {"S6KZNX0T123456": False, "S6KZNX0T999999": True}
 
-    # 10. Admin queries audit and sees every transition
+    # 8. Admin queries audit and sees every transition
     audit = await client.get("/api/v1/audit", headers=auth_h(admin_token))
     assert audit.status_code == 200
     actions = {e["action"] for e in audit.json()["items"]}
@@ -125,8 +136,6 @@ async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
         "agent.enrollment_created",
         "agent.enrolled",
         "agent.inventory_submitted",
-        "job.create",
-        "job.picked_up",
-        "job.completed",
+        "server.component_swap",
     }:
         assert expected in actions, f"missing audit action: {expected}"

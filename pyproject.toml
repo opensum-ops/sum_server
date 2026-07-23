@@ -1,7 +1,7 @@
 [project]
 name = "sum_server"
 dynamic = ["version"]
-description = "OpenSUM authoritative backend: ownership, inventory, jobs, audits, etc."
+description = "OpenSUM authoritative backend: ownership, inventory, audit."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
