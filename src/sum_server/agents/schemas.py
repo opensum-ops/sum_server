@@ -1,4 +1,4 @@
-"""Agent schemas (enrollment, inventory ingest, job poll/pickup/result)."""
+"""Agent schemas (enrollment, inventory ingest)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
 from sum_server.components.schemas import ComponentIngest
-from sum_server.jobs.schemas import JobResponse
 
 
 class EnrollmentCreate(BaseModel):
@@ -50,7 +49,3 @@ class InventoryIngestResponse(BaseModel):
     updated: int
     marked_absent: int
     swaps: int
-
-
-class JobsListResponse(BaseModel):
-    jobs: list[JobResponse]

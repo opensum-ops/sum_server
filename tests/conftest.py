@@ -50,7 +50,6 @@ def _bootstrap_schema(_testcontainer_postgres: str) -> None:
     import sum_server.auth.models
     import sum_server.components.models
     import sum_server.core.audit
-    import sum_server.jobs.models
     import sum_server.servers.models
     import sum_server.teams.models
     import sum_server.users.models  # noqa: F401
@@ -101,7 +100,7 @@ async def _clean_tables() -> AsyncIterator[None]:
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.exec_driver_sql(
-            "TRUNCATE TABLE audit_entries, job_results, jobs, components, "
+            "TRUNCATE TABLE audit_entries, components, "
             "agent_enrollments, agent_tokens, session_tokens, "
             "server_owner_teams, server_owner_users, servers, "
             "team_memberships, teams, users RESTART IDENTITY CASCADE"

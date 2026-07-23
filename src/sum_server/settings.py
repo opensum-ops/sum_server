@@ -43,7 +43,6 @@ class Settings(BaseSettings):
     session_token_ttl_seconds: int = 14 * 24 * 3600
     enrollment_token_ttl_seconds: int = 3600
     agent_token_ttl_seconds: int = 0  # 0 = no expiry
-    job_default_ttl_seconds: int = 3600
 
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     log_format: LogFormat = LogFormat.console
