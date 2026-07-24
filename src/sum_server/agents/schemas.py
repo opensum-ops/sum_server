@@ -91,6 +91,16 @@ class HeartbeatRequest(BaseModel):
     agent_version: str | None = Field(default=None, max_length=32)
 
 
+class AgentUpdateDirective(BaseModel):
+    target_version: str
+    sha256: str
+    binary_url: str
+    signature: str  # base64 Ed25519 over {host_id, target_version, sha256}
+
+
 class HeartbeatResponse(BaseModel):
     presence: str
     server_time: dt.datetime
+    # Additive: present only when the host has a pending agent update. N-1
+    # agents ignore the field entirely.
+    agent_update: AgentUpdateDirective | None = None

@@ -6,6 +6,7 @@ import datetime as dt
 import uuid
 
 from fastapi import APIRouter, Request, status
+from fastapi.responses import FileResponse
 
 from sum_server.agents import service as svc
 from sum_server.agents.schemas import (
@@ -21,6 +22,7 @@ from sum_server.agents.schemas import (
 )
 from sum_server.core.db import SessionDep
 from sum_server.core.deps import AdminActor, AgentActor
+from sum_server.core.errors import NotFoundError
 from sum_server.core.security.signing import get_public_key_b64
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -114,8 +116,15 @@ async def heartbeat(
     payload: HeartbeatRequest,
     agent: AgentActor,
     session: SessionDep,
+    request: Request,
 ) -> HeartbeatResponse:
+    from sum_server.agents.compat import agent_version_from_request
+    from sum_server.hosts.facts import get_fact_value
+    from sum_server.settings import get_settings
+    from sum_server.updates.agent_update import build_directive_for_host
+
     assert agent.id is not None
+    reported = agent_version_from_request(request, payload.agent_version)
     async with session.begin():
         host = await svc.record_heartbeat(
             session,
@@ -125,4 +134,38 @@ async def heartbeat(
             boot_id=payload.boot_id,
         )
         presence = host.presence
-    return HeartbeatResponse(presence=presence, server_time=dt.datetime.now(tz=dt.UTC))
+        directive = None
+        if payload.state == "running" and host.target_agent_version:
+            arch = await get_fact_value(session, host_id=agent.id, key="arch")
+            base_url = get_settings().external_url or str(request.base_url)
+            directive = await build_directive_for_host(
+                session,
+                host=host,
+                reported_version=reported,
+                host_arch=str(arch) if arch is not None else None,
+                base_url=base_url,
+            )
+    return HeartbeatResponse(
+        presence=presence,
+        server_time=dt.datetime.now(tz=dt.UTC),
+        agent_update=directive,
+    )
+
+
+@router.get("/binary/{version}")
+async def get_agent_binary(
+    version: str,
+    _agent: AgentActor,
+    session: SessionDep,
+) -> FileResponse:
+    """Stream a cached agent binary to an enrolled agent."""
+    from sum_server.updates.agent_binary import cached_binary_if_present
+
+    cached = cached_binary_if_present(version)
+    if cached is None:
+        raise NotFoundError("agent binary not available")
+    return FileResponse(
+        cached.path,
+        media_type="application/octet-stream",
+        filename=f"sum-agent-{version}",
+    )

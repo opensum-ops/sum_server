@@ -52,6 +52,10 @@ class Host(Base, IdMixin, TimestampMixin):
     reported_presence: Mapped[str | None] = mapped_column(String(16), nullable=True)
     boot_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # Desired agent version (set by "Update agent"); cleared once the agent
+    # reports it reached it. See updates/directive.py.
+    target_agent_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     agent_tokens: Mapped[list[AgentToken]] = relationship(
         back_populates="host", cascade="all, delete-orphan", lazy="select"
     )

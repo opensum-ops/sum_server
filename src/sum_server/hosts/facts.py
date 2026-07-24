@@ -34,6 +34,15 @@ async def list_facts(session: AsyncSession, *, host_id: uuid.UUID) -> list[HostF
     )
 
 
+async def get_fact_value(session: AsyncSession, *, host_id: uuid.UUID, key: str) -> Any | None:
+    """Return a single fact's value for a host, or ``None`` if unset."""
+    return (
+        await session.execute(
+            select(HostFact.value).where(HostFact.host_id == host_id, HostFact.key == key)
+        )
+    ).scalar_one_or_none()
+
+
 async def ingest_facts(
     session: AsyncSession,
     *,

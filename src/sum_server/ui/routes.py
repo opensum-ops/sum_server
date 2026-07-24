@@ -358,6 +358,14 @@ async def host_detail_page(
         for tid in await hosts_svc.get_team_owner_ids(session, host_id)
         if (t := await get_team(session, tid)) is not None
     ]
+
+    from sum_server.core.versions import is_newer
+    from sum_server.updates.models import COMPONENT_AGENT
+    from sum_server.updates.service import get_release_cache
+
+    agent_current = str(facts_map.get("agent_version") or "")
+    agent_cache = await get_release_cache(session, COMPONENT_AGENT)
+    latest_agent = agent_cache.latest_version if agent_cache else None
     return await _render(
         request,
         session,
@@ -377,8 +385,62 @@ async def host_detail_page(
             "effective_params": effective,
             "user_owners": user_owners,
             "team_owners": team_owners,
+            "agent_current": agent_current,
+            "latest_agent": latest_agent,
+            "agent_update_available": is_newer(latest_agent, agent_current),
+            "target_agent_version": host.target_agent_version,
         },
     )
+
+
+@router.post("/hosts/{host_id}/agent-update")
+async def host_agent_update(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    target_version: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sum_server.core.errors import ConflictError
+    from sum_server.updates import agent_binary, agent_update
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    # Cache the binary now (slow path, with feedback) so heartbeats stay fast.
+    try:
+        await agent_binary.ensure_cached(session, target_version)
+    except agent_binary.BinaryUnavailableError as exc:
+        raise ConflictError(f"cannot stage agent {target_version}: {exc}") from exc
+    async with session.begin():
+        host = await hosts_svc.get_host(session, host_id)
+        if host is None:
+            raise NotFoundError("host not found")
+        await agent_update.set_target(session, host=host, version=target_version, actor=user)
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@router.post("/hosts/{host_id}/agent-update/cancel")
+async def host_agent_update_cancel(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sum_server.updates import agent_update
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        host = await hosts_svc.get_host(session, host_id)
+        if host is None:
+            raise NotFoundError("host not found")
+        if host.target_agent_version:
+            await agent_update.clear_target(session, host=host, reason="cancelled")
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
 
 
 # --- Hosts: parameter + group membership actions ----------------------------
