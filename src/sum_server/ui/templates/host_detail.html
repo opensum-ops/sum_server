@@ -44,6 +44,38 @@
     </div>
 
     <div class="card">
+        <div class="card-header">
+            <span class="card-title">Agent</span>
+            {% if target_agent_version %}
+            <span class="pill pill-provisioning">updating → {{ target_agent_version }}</span>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Version</dt><dd class="mono">{{ agent_current or "unknown" }}</dd>
+                <dt>Latest</dt><dd class="mono">{{ latest_agent or "unknown" }}</dd>
+            </dl>
+            {% if is_admin %}
+                {% if target_agent_version %}
+                <form method="post" action="/hosts/{{ host.id }}/agent-update/cancel" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-ghost btn-sm">Cancel pending update</button>
+                </form>
+                <p class="muted" style="margin-top: 8px;">The agent applies the update on its next heartbeat, with failover to the current binary.</p>
+                {% elif agent_update_available %}
+                <form method="post" action="/hosts/{{ host.id }}/agent-update">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="target_version" value="{{ latest_agent }}">
+                    <button type="submit" class="btn btn-primary">Update agent to {{ latest_agent }}</button>
+                </form>
+                {% else %}
+                <span class="muted">Up to date.</span>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
         <div class="card-header"><span class="card-title">Owners</span></div>
         <div class="card-body">
             <dl class="kv">
