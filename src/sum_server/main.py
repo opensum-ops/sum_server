@@ -7,9 +7,10 @@ health/ready/well-known endpoints.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from urllib.parse import quote
 
@@ -86,6 +87,21 @@ async def _bootstrap_admin() -> None:
         log.info("bootstrap_admin_created", email=email)
 
 
+async def _update_check_loop(stop: asyncio.Event, interval_seconds: int) -> None:
+    """Periodically refresh the GitHub release cache (best-effort)."""
+    from sum_server.updates import service as updates_svc
+
+    sm = async_sessionmaker(get_engine(), expire_on_commit=False)
+    while not stop.is_set():
+        try:
+            async with sm() as session, session.begin():
+                await updates_svc.refresh_all(session, audit=False)
+        except Exception:
+            log.exception("update_check_failed")
+        with suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=interval_seconds)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
@@ -95,9 +111,19 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     signing.load_signing_key(settings.signing_private_key)
     await _bootstrap_admin()
     await _bootstrap_global_group()
+
+    stop = asyncio.Event()
+    tasks: list[asyncio.Task[None]] = []
+    if settings.update_check_enabled:
+        tasks.append(
+            asyncio.create_task(_update_check_loop(stop, settings.update_check_interval_seconds))
+        )
     try:
         yield
     finally:
+        stop.set()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         await dispose_engine()
         log.info("stopped")
 

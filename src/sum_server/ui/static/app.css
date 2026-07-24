@@ -631,3 +631,45 @@ fieldset[hidden] {
     font-size: 17px;
     font-weight: 600;
 }
+
+/* ---- Settings page ----------------------------------------------------- */
+
+.nav {
+    flex: 1 1 auto;
+}
+
+.nav-item-bottom {
+    margin-top: auto;
+}
+
+.section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 22px 0 10px;
+}
+
+.release-notes {
+    margin-top: 10px;
+}
+
+.release-notes summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-size: 13px;
+}
+
+.release-notes pre {
+    margin-top: 8px;
+    max-height: 320px;
+    overflow: auto;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}

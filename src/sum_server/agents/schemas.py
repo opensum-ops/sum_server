@@ -51,6 +51,9 @@ class EnrollResponse(BaseModel):
 class InventoryIngestRequest(BaseModel):
     facts: dict[str, FactValue] = Field(default_factory=dict)
     components: list[ComponentIngest]
+    # Additive (N-1 agents omit it); the agent version also arrives via
+    # User-Agent, so this is a robustness belt, not a requirement.
+    agent_version: str | None = Field(default=None, max_length=32)
 
     @field_validator("facts")
     @classmethod
@@ -83,6 +86,9 @@ class HeartbeatRequest(BaseModel):
     # Why the agent is stopping; ignored (and meaningless) while running.
     detail: Literal["rebooting", "powered_off", "agent_stop"] | None = None
     boot_id: str | None = Field(default=None, max_length=64)
+    # Additive (N-1 agents omit it). Lets the server confirm a completed
+    # self-update without waiting for the next inventory.
+    agent_version: str | None = Field(default=None, max_length=32)
 
 
 class HeartbeatResponse(BaseModel):

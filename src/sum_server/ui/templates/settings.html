@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Settings — OpenSUM{% endblock %}
+{% block crumb %}Settings{% endblock %}
+
+{% macro update_panel(comp, label) %}
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">{{ label }}</span>
+        {% if comp.update_available %}
+        <span class="pill pill-provisioning">update available</span>
+        {% else %}
+        <span class="pill pill-online">up to date</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <dl class="kv">
+            <dt>Current</dt><dd class="mono">{{ comp.current_version or "—" }}</dd>
+            <dt>Latest</dt><dd class="mono">{{ comp.latest_version or "unknown" }}</dd>
+            <dt>Checked</dt>
+            <dd class="muted">{{ comp.checked_at.strftime("%Y-%m-%d %H:%M UTC") if comp.checked_at else "never" }}</dd>
+            {% if comp.error %}<dt>Error</dt><dd class="mono" style="color: var(--red);">{{ comp.error }}</dd>{% endif %}
+        </dl>
+        {% if comp.update_available and comp.notes %}
+        <details class="release-notes">
+            <summary>{{ comp.release_name or comp.latest_version }} — release notes</summary>
+            <pre>{{ comp.notes }}</pre>
+        </details>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+    <h2>Settings</h2>
+    <form method="post" action="/settings/check-updates" class="inline-form" style="margin-left: auto;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-primary">Check for updates</button>
+    </form>
+</div>
+
+<h3 class="section-title">Updates</h3>
+<div class="detail-grid">
+    {{ update_panel(updates.server, "sum_server") }}
+    {{ update_panel(updates.agent, "sum_agent (fleet)") }}
+</div>
+<p class="muted" style="margin-top: 8px;">
+    Update the server here (in-place, with rollback). Update individual agents from their host pages.
+</p>
+
+<h3 class="section-title">System</h3>
+<div class="card">
+    <div class="card-body">
+        <dl class="kv">
+            <dt>Version</dt><dd class="mono">{{ version }}</dd>
+            <dt>Environment</dt><dd>{{ env }}</dd>
+            <dt>Signing key</dt><dd>{{ "loaded" if signing_loaded else "NOT loaded" }}</dd>
+            <dt>External URL</dt><dd class="mono">{{ external_url }}</dd>
+            <dt>Presence window</dt><dd>{{ presence_online_window }}s online / {{ presence_reboot_grace }}s reboot grace</dd>
+            <dt>Auto update-check</dt><dd>{{ "on" if update_check_enabled else "off" }}</dd>
+        </dl>
+    </div>
+</div>
+{% endblock %}

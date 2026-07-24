@@ -52,6 +52,20 @@ class Settings(BaseSettings):
     # request's base URL when empty), e.g. "https://sum.example.com".
     external_url: str = ""
 
+    # --- Updates (GitHub release checking + self-update) ---
+    update_check_enabled: bool = True
+    update_check_interval_seconds: int = Field(default=21600, ge=300)
+    github_owner: str = "opensum-ops"
+    github_repo_server: str = "sum_server"
+    github_repo_agent: str = "sum_agent"
+    github_token: str = ""  # optional; raises the anonymous rate limit
+    # Where cached agent binaries (and DB dumps for self-update) live.
+    data_dir: Path = Path("/var/lib/sum-server")
+    # Git checkout path for server self-update; blank disables self-update.
+    install_dir: str = ""
+    # systemd unit restarted by the self-updater.
+    service_name: str = "sum-server"
+
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     log_format: LogFormat = LogFormat.console
     env: Env = Env.dev
