@@ -34,6 +34,10 @@ def _testcontainer_postgres() -> Iterator[str]:
         os.environ["SUM_SERVER_ENV"] = "test"
         os.environ["SUM_SERVER_LOG_FORMAT"] = "console"
         os.environ["SUM_SERVER_LOG_LEVEL"] = "warning"
+        # Never make real GitHub calls in tests: the background refresh loop
+        # would race per-test state and populate release_cache. Update tests
+        # mock fetch_latest_release and drive /updates/check explicitly.
+        os.environ["SUM_SERVER_UPDATE_CHECK_ENABLED"] = "false"
         yield url
 
 
