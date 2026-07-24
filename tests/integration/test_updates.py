@@ -35,9 +35,7 @@ def mock_github(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.usefixtures("mock_github")
-async def test_check_populates_and_reports_available(
-    client: AsyncClient, admin_token: str
-) -> None:
+async def test_check_populates_and_reports_available(client: AsyncClient, admin_token: str) -> None:
     r = await client.post("/api/v1/updates/check", headers=auth_h(admin_token))
     assert r.status_code == 200, r.text
     body = r.json()
