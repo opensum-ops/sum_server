@@ -48,6 +48,35 @@
     Update the server here (in-place, with rollback). Update individual agents from their host pages.
 </p>
 
+<div class="card section">
+    <div class="card-header"><span class="card-title">Server update</span></div>
+    <div class="card-body">
+        {% if server_update_in_progress or server_update %}
+        <div hx-get="/settings/update-status"
+             hx-trigger="{% if server_update_in_progress %}load, every 3s{% endif %}"
+             hx-swap="innerHTML">
+            {% include "_update_status.html" %}
+        </div>
+        {% endif %}
+        {% if not self_update_available %}
+        <p class="muted">In-place server update is unavailable: {{ self_update_reason }}.</p>
+        {% elif not server_update_in_progress %}
+            {% if updates.server.update_available %}
+            <form method="post" action="/settings/update-server">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="target_version" value="{{ updates.server.latest_version }}">
+                <button type="submit" class="btn btn-primary">Update server to {{ updates.server.latest_version }}</button>
+            </form>
+            <p class="muted" style="margin-top: 8px;">
+                Snapshots the database first; on any failure the server rolls back code and data to the current version.
+            </p>
+            {% else %}
+            <span class="muted">Server is up to date.</span>
+            {% endif %}
+        {% endif %}
+    </div>
+</div>
+
 <h3 class="section-title">System</h3>
 <div class="card">
     <div class="card-body">

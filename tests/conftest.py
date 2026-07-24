@@ -104,7 +104,7 @@ async def _clean_tables() -> AsyncIterator[None]:
         await conn.exec_driver_sql(
             "TRUNCATE TABLE audit_entries, components, host_facts, "
             "host_groups, group_parameters, host_parameters, groups, "
-            "release_cache, system_settings, "
+            "release_cache, system_settings, server_updates, "
             "agent_enrollments, agent_tokens, session_tokens, "
             "host_owner_teams, host_owner_users, hosts, "
             "team_memberships, teams, users RESTART IDENTITY CASCADE"

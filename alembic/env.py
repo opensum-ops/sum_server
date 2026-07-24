@@ -34,7 +34,11 @@ from sum_server.hosts.models import (  # noqa: F401
 )
 from sum_server.settings import get_settings
 from sum_server.teams.models import Team, TeamMembership  # noqa: F401
-from sum_server.updates.models import ReleaseCache, SystemSetting  # noqa: F401
+from sum_server.updates.models import (  # noqa: F401
+    ReleaseCache,
+    ServerUpdate,
+    SystemSetting,
+)
 from sum_server.users.models import User  # noqa: F401
 
 config = context.config
