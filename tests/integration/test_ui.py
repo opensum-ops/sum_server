@@ -146,3 +146,22 @@ async def test_audit_page_admin_only(
     r = await client.get("/audit")
     assert r.status_code == 200
     assert "Audit log" in r.text
+
+
+async def test_settings_page_admin_only(
+    client: AsyncClient, admin_user: Any, regular_user: Any
+) -> None:
+    await _ui_login(client, "user@example.com", "user-pw-1234")
+    r = await client.get("/settings")
+    assert r.status_code == 403
+
+    csrf = client.cookies["sum_csrf"]
+    r = await client.post("/logout", data={"csrf_token": csrf})
+    assert r.status_code == 303
+
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+    r = await client.get("/settings")
+    assert r.status_code == 200
+    assert "Settings" in r.text
+    assert "sum_server" in r.text  # updates panel
+    assert "System" in r.text

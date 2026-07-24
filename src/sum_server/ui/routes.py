@@ -933,3 +933,50 @@ async def audit_rows(
             "target_kind_filter": target_kind or "",
         },
     )
+
+
+# --- Settings (admin) -------------------------------------------------------
+
+
+async def _settings_context(session: SessionDep) -> dict[str, object]:
+    from sum_server import __version__
+    from sum_server.core.security import signing
+    from sum_server.updates import service as updates_svc
+
+    settings = get_settings()
+    summary = await updates_svc.build_summary(session)
+    return {
+        "version": __version__,
+        "env": settings.env.value,
+        "signing_loaded": signing.is_loaded(),
+        "external_url": settings.external_url or "(request base URL)",
+        "presence_online_window": settings.presence_online_window_seconds,
+        "presence_reboot_grace": settings.presence_reboot_grace_seconds,
+        "update_check_enabled": settings.update_check_enabled,
+        "updates": summary,
+    }
+
+
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request, session: SessionDep, user: UiUser) -> HTMLResponse:
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    ctx = await _settings_context(session)
+    return await _render(request, session, user.id, "settings.html", "settings", ctx)
+
+
+@router.post("/settings/check-updates")
+async def settings_check_updates(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sum_server.updates import service as updates_svc
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        await updates_svc.refresh_all(session)
+    return RedirectResponse("/settings", status_code=303)
