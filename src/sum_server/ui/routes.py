@@ -1004,9 +1004,14 @@ async def _settings_context(session: SessionDep) -> dict[str, object]:
     from sum_server import __version__
     from sum_server.core.security import signing
     from sum_server.updates import service as updates_svc
+    from sum_server.updates import system as system_svc
+    from sum_server.updates.models import is_terminal
 
     settings = get_settings()
     summary = await updates_svc.build_summary(session)
+    su_ok, su_reason = system_svc.self_update_available()
+    latest = await system_svc.latest_update(session)
+    in_progress = latest is not None and not is_terminal(latest.status)
     return {
         "version": __version__,
         "env": settings.env.value,
@@ -1016,6 +1021,10 @@ async def _settings_context(session: SessionDep) -> dict[str, object]:
         "presence_reboot_grace": settings.presence_reboot_grace_seconds,
         "update_check_enabled": settings.update_check_enabled,
         "updates": summary,
+        "self_update_available": su_ok,
+        "self_update_reason": su_reason,
+        "server_update": latest,
+        "server_update_in_progress": in_progress,
     }
 
 
@@ -1042,3 +1051,43 @@ async def settings_check_updates(
     async with session.begin():
         await updates_svc.refresh_all(session)
     return RedirectResponse("/settings", status_code=303)
+
+
+@router.post("/settings/update-server")
+async def settings_update_server(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    csrf_token: Annotated[str, Form()],
+    target_version: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sum_server.updates import system as system_svc
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        await system_svc.request_server_update(session, target_version=target_version, actor=user)
+    await system_svc.launch_updater()
+    return RedirectResponse("/settings", status_code=303)
+
+
+@router.get("/settings/update-status", response_class=HTMLResponse)
+async def settings_update_status(
+    request: Request, session: SessionDep, user: UiUser
+) -> HTMLResponse:
+    """HTMX fragment: current server-update status (polled during an update)."""
+    from sum_server.updates import system as system_svc
+    from sum_server.updates.models import is_terminal
+
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    latest = await system_svc.latest_update(session)
+    return templates.TemplateResponse(
+        request,
+        "_update_status.html",
+        {
+            "server_update": latest,
+            "server_update_in_progress": latest is not None and not is_terminal(latest.status),
+        },
+    )

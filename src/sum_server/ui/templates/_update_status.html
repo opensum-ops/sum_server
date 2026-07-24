@@ -1,0 +1,15 @@
+{% if server_update %}
+<div class="update-status">
+    <div class="update-status-head">
+        <span class="pill pill-{{ 'online' if server_update.status == 'success'
+            else 'decommissioned' if server_update.status == 'failed'
+            else 'provisioning' if server_update.status in ('rolled_back',)
+            else 'pending' }}">{{ server_update.status | replace("_", " ") }}</span>
+        <span class="mono">{{ server_update.from_version }} → {{ server_update.to_version }}</span>
+        {% if server_update_in_progress %}<span class="muted">working…</span>{% endif %}
+    </div>
+    {% if server_update.detail %}
+    <p class="muted mono" style="margin-top: 6px;">{{ server_update.detail }}</p>
+    {% endif %}
+</div>
+{% endif %}

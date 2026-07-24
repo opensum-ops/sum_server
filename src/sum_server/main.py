@@ -162,9 +162,10 @@ def create_app() -> FastAPI:
             reasons.append(f"db unreachable: {exc.__class__.__name__}")
         if reasons:
             return JSONResponse(
-                status_code=503, content={"status": "not_ready", "reasons": reasons}
+                status_code=503,
+                content={"status": "not_ready", "version": __version__, "reasons": reasons},
             )
-        return JSONResponse(content={"status": "ready"})
+        return JSONResponse(content={"status": "ready", "version": __version__})
 
     @app.get("/.well-known/sum-server-signing-key", tags=["meta"])
     async def signing_key() -> dict[str, str]:

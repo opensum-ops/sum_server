@@ -673,3 +673,15 @@ fieldset[hidden] {
     line-height: 1.5;
     white-space: pre-wrap;
 }
+
+/* ---- Server update status --------------------------------------------- */
+
+.update-status {
+    padding: 10px 0 14px;
+}
+
+.update-status-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
