@@ -28,7 +28,7 @@
                     <th>Actor</th>
                     <th>Action</th>
                     <th>Target</th>
-                    <th>Payload</th>
+                    <th class="adv-col">Payload</th>
                 </tr>
             </thead>
             <tbody id="audit-body">
@@ -36,5 +36,9 @@
             </tbody>
         </table>
     </div>
+    <details class="disclosure">
+        <summary>Show entry payloads</summary>
+        <div class="disclosure-body">The payload records what changed. Entries are append-only.</div>
+    </details>
 </div>
 {% endblock %}

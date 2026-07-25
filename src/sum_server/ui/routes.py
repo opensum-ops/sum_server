@@ -22,7 +22,7 @@ from sum_server.core.errors import AuthError, ForbiddenError, NotFoundError
 from sum_server.core.pagination import Cursor
 from sum_server.hosts import service as hosts_svc
 from sum_server.hosts.presence import PRESENCE_VALUES
-from sum_server.hosts.search import HostSearch, search_hosts
+from sum_server.hosts.search import HostSearch, HostSearchResult, search_hosts
 from sum_server.settings import Env, get_settings
 from sum_server.ui.deps import (
     CSRF_COOKIE,
@@ -164,7 +164,11 @@ def _parse_search(request: Request) -> HostSearch:
 
 
 def _filter_chips(search: HostSearch) -> list[dict[str, str]]:
-    """Active filters as chips, each with a URL that removes just itself."""
+    """Active filters as chips, each with a URL that removes just itself.
+
+    Rendered server-side so the bar works without JavaScript; ``app.js`` takes
+    over chip rendering once loaded, using the same markup.
+    """
     pairs: list[tuple[str, str, str]] = []  # (query key, query value, label)
     if search.text:
         pairs.append(("q", search.text, f'text: "{search.text}"'))
@@ -186,14 +190,45 @@ def _filter_chips(search: HostSearch) -> list[dict[str, str]]:
     return chips
 
 
+def _search_to_tokens(search: HostSearch) -> str:
+    """Serialize a parsed search back into the bar's token grammar.
+
+    Grammar: ``presence:v``, ``group:v``, ``component:v``, ``fact:k=v``,
+    ``param:k=v``, and bare words for free text. ``app.js`` parses the same
+    shape and maps it back onto the query params.
+    """
+    parts: list[str] = []
+    if search.presence:
+        parts.append(f"presence:{search.presence}")
+    if search.group:
+        parts.append(f"group:{search.group}")
+    if search.component:
+        parts.append(f"component:{search.component}")
+    parts += [f"fact:{k}={v}" for k, v in search.facts]
+    parts += [f"param:{k}={v}" for k, v in search.parameters]
+    if search.text:
+        parts.append(search.text)
+    return " ".join(parts)
+
+
+def _results_context(search: HostSearch, results: list[HostSearchResult]) -> dict[str, object]:
+    """Context shared by the full page and the ``/hosts/rows`` partial, so the
+    two renderings cannot drift apart.
+    """
+    return {
+        "results": results,
+        "search": search,
+        "fact_keys": [k for k, _ in search.facts],
+        "param_keys": [k for k, _ in search.parameters],
+        "has_filters": search != HostSearch(),
+    }
+
+
 @router.get("/hosts", response_class=HTMLResponse)
 async def hosts_page(request: Request, session: SessionDep, user: UiUser) -> HTMLResponse:
-    from sum_server.groups.service import list_groups
-
     assert user.id is not None
     search = _parse_search(request)
     results = await search_hosts(session, actor_user_id=user.id, search=search)
-    groups = await list_groups(session)
     return await _render(
         request,
         session,
@@ -201,15 +236,91 @@ async def hosts_page(request: Request, session: SessionDep, user: UiUser) -> HTM
         "hosts.html",
         "hosts",
         {
-            "results": results,
-            "search": search,
+            **_results_context(search, results),
             "chips": _filter_chips(search),
-            "fact_keys": [k for k, _ in search.facts],
-            "param_keys": [k for k, _ in search.parameters],
-            "groups": groups,
-            "presence_values": PRESENCE_VALUES,
+            "search_tokens": _search_to_tokens(search),
         },
     )
+
+
+@router.get("/hosts/rows", response_class=HTMLResponse)
+async def hosts_rows(request: Request, session: SessionDep, user: UiUser) -> HTMLResponse:
+    """Result rows only, for the live-search swap (see ``/audit/rows``)."""
+    assert user.id is not None
+    search = _parse_search(request)
+    results = await search_hosts(session, actor_user_id=user.id, search=search)
+    return templates.TemplateResponse(request, "_host_rows.html", _results_context(search, results))
+
+
+# Search-bar vocabulary: (token prefix, hint shown beside it).
+_SEARCH_FIELDS: tuple[tuple[str, str], ...] = (
+    ("presence:", "live state"),
+    ("group:", "group membership"),
+    ("fact:", "agent-observed key=value"),
+    ("param:", "assigned key=value"),
+    ("component:", "hardware substring"),
+)
+
+
+async def _suggestions_for(
+    session: SessionDep, *, actor_user_id: uuid.UUID, token: str
+) -> list[dict[str, str]]:
+    """Suggestions for the token being typed. See ``_search_to_tokens`` for the grammar."""
+    from sum_server.groups.service import distinct_parameter_keys, list_groups
+    from sum_server.hosts.facts import distinct_fact_keys, distinct_fact_values
+
+    lowered = token.lower()
+    if ":" not in token:
+        return [
+            {"value": prefix, "label": prefix, "hint": hint}
+            for prefix, hint in _SEARCH_FIELDS
+            if prefix.startswith(lowered)
+        ]
+
+    field, rest = token.split(":", 1)
+    field = field.lower()
+
+    if field == "presence":
+        return [
+            {"value": f"presence:{p}", "label": p, "hint": ""}
+            for p in PRESENCE_VALUES
+            if p.startswith(rest.lower())
+        ]
+    if field == "group":
+        return [
+            {"value": f"group:{g.name}", "label": g.name, "hint": g.description or ""}
+            for g in await list_groups(session)
+            if g.name.lower().startswith(rest.lower())
+        ]
+    if field in ("fact", "param"):
+        if "=" not in rest:
+            keys = (
+                await distinct_fact_keys(session, actor_user_id=actor_user_id, prefix=rest)
+                if field == "fact"
+                else await distinct_parameter_keys(
+                    session, actor_user_id=actor_user_id, prefix=rest
+                )
+            )
+            return [{"value": f"{field}:{k}=", "label": k, "hint": "pick a value"} for k in keys]
+        if field == "fact":
+            key, value_prefix = rest.split("=", 1)
+            return [
+                {"value": f"fact:{key}={v}", "label": v, "hint": key}
+                for v in await distinct_fact_values(
+                    session, actor_user_id=actor_user_id, key=key, prefix=value_prefix
+                )
+            ]
+    return []
+
+
+@router.get("/hosts/suggest", response_class=HTMLResponse)
+async def hosts_suggest(
+    request: Request, session: SessionDep, user: UiUser, token: str = ""
+) -> HTMLResponse:
+    """Suggestion list for the search bar. Values are visibility-scoped."""
+    assert user.id is not None
+    suggestions = await _suggestions_for(session, actor_user_id=user.id, token=token.strip())
+    return templates.TemplateResponse(request, "_suggestions.html", {"suggestions": suggestions})
 
 
 # --- Hosts: enrollment wizard ----------------------------------------------

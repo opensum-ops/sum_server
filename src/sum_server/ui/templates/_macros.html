@@ -1,0 +1,33 @@
+{# Shared building blocks for the console menu idiom.
+
+   setting_row  - single-entity attribute: label left, value right.
+   disclosure   - collapsed section for advanced/verbose data.
+   Multi-entity collections stay real tables (see .table in app.css). #}
+
+{% macro setting_row(label, value, mono=false, dim=false) %}
+<div class="setting-row">
+    <span class="setting-label">{{ label }}</span>
+    <span class="setting-value{% if mono %} mono{% endif %}{% if dim %} muted{% endif %}">
+        {{- value if value not in (none, "") else "—" -}}
+    </span>
+</div>
+{% endmacro %}
+
+{# Value is caller-rendered markup (a pill, a form, a link). #}
+{% macro setting_row_raw(label) %}
+<div class="setting-row">
+    <span class="setting-label">{{ label }}</span>
+    <span class="setting-value">{{ caller() }}</span>
+</div>
+{% endmacro %}
+
+{% macro disclosure(summary) %}
+<details class="disclosure">
+    <summary>{{ summary }}</summary>
+    <div class="disclosure-body">{{ caller() }}</div>
+</details>
+{% endmacro %}
+
+{% macro timestamp(value, fmt="%Y-%m-%d %H:%M:%S", fallback="never") %}
+{{- value.strftime(fmt) if value else fallback -}}
+{% endmacro %}

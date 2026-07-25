@@ -68,16 +68,4 @@ sudo systemctl enable --now sum-agent</pre>
         </div>
     </div>
 </div>
-
-<script>
-    document.querySelectorAll(".copy-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-            const pre = document.getElementById(btn.dataset.target).querySelector("pre");
-            navigator.clipboard.writeText(pre.textContent).then(() => {
-                btn.textContent = "Copied";
-                setTimeout(() => { btn.textContent = "Copy"; }, 1500);
-            });
-        });
-    });
-</script>
 {% endblock %}

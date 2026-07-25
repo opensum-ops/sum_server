@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import setting_row, setting_row_raw %}
 {% block title %}{{ group.name }} — OpenSUM{% endblock %}
 {% block crumb %}<a href="/groups">Groups</a> / {{ group.name }}{% endblock %}
 
@@ -17,17 +18,19 @@
 <div class="detail-grid">
     <div class="card">
         <div class="card-header"><span class="card-title">About</span></div>
-        <div class="card-body">
-            <dl class="kv">
-                <dt>Parent</dt>
-                <dd>{% if parent %}<a href="/groups/{{ parent.id }}">{{ parent.name }}</a>{% else %}—{% endif %}</dd>
-                <dt>Description</dt><dd>{{ group.description or "—" }}</dd>
-                <dt>Children</dt>
-                <dd>
+        <div class="card-body flush">
+            <div class="settings-list">
+                {% call setting_row_raw("Parent") %}
+                    {% if parent %}<a href="/groups/{{ parent.id }}">{{ parent.name }}</a>{% else %}—{% endif %}
+                {% endcall %}
+                {{ setting_row("Description", group.description) }}
+                {% call setting_row_raw("Children") %}
                     {% for c in children %}<div><a href="/groups/{{ c.id }}">{{ c.name }}</a></div>
                     {% else %}<span class="muted">none</span>{% endfor %}
-                </dd>
-            </dl>
+                {% endcall %}
+            </div>
+        </div>
+        <div class="card-body">
             {% if is_admin %}
             <form method="post" action="/groups/{{ group.id }}/update">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

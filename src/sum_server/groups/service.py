@@ -51,6 +51,36 @@ async def list_groups(session: AsyncSession) -> list[Group]:
     return list((await session.execute(select(Group).order_by(Group.name))).scalars().all())
 
 
+async def distinct_parameter_keys(
+    session: AsyncSession,
+    *,
+    actor_user_id: uuid.UUID,
+    prefix: str = "",
+    limit: int = 20,
+) -> list[str]:
+    """Parameter keys visible to this actor, for search suggestions.
+
+    Group parameters are fleet-wide, so all group keys are offered; host-level
+    keys are scoped to hosts the actor may read (same reasoning as
+    :func:`~sum_server.hosts.facts.distinct_fact_keys`).
+    """
+    from sum_server.hosts.models import Host
+    from sum_server.hosts.search import visibility_clause
+
+    group_keys = select(GroupParameter.key)
+    visible = select(Host.id).where(await visibility_clause(session, actor_user_id=actor_user_id))
+    host_keys = select(HostParameter.key).where(HostParameter.host_id.in_(visible))
+    if prefix:
+        group_keys = group_keys.where(GroupParameter.key.ilike(f"{prefix}%"))
+        host_keys = host_keys.where(HostParameter.key.ilike(f"{prefix}%"))
+
+    # Two small capped queries and a merge, rather than a UNION whose ORDER BY
+    # would have to reach into one branch's column.
+    from_groups = (await session.execute(group_keys.distinct().limit(limit))).scalars().all()
+    from_hosts = (await session.execute(host_keys.distinct().limit(limit))).scalars().all()
+    return sorted(set(from_groups) | set(from_hosts))[:limit]
+
+
 async def _nodes_by_id(session: AsyncSession) -> dict[uuid.UUID, GroupNode]:
     return {
         g.id: GroupNode(id=g.id, name=g.name, parent_id=g.parent_id)

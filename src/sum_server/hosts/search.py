@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import Select, literal, or_, select
+from sqlalchemy import ColumnElement, Select, false, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,9 @@ from sum_server.groups.models import Group, host_groups
 from sum_server.hosts.models import Host, HostFact
 
 MAX_RESULTS = 500
+
+# Always fetched for the host list's own columns, on top of any filtered keys.
+DISPLAY_FACT_KEYS = ("primary_ipv4",)
 
 
 @dataclass(frozen=True)
@@ -45,6 +48,8 @@ class HostSearchResult:
     fact_values: dict[str, Any] = field(default_factory=dict)
     param_values: dict[str, Any] = field(default_factory=dict)
     matched_components: list[Component] = field(default_factory=list)
+    # Values for DISPLAY_FACT_KEYS, shown as fixed columns.
+    display_facts: dict[str, Any] = field(default_factory=dict)
 
 
 def _coerced_json_values(raw: str) -> list[Any]:
@@ -104,6 +109,37 @@ def _apply_sql_filters(stmt: Select[tuple[Host]], search: HostSearch) -> Select[
     return stmt
 
 
+async def visibility_clause(
+    session: AsyncSession, *, actor_user_id: uuid.UUID
+) -> ColumnElement[bool]:
+    """WHERE clause restricting a ``Host`` query to what this actor may read.
+
+    Admins get an always-true clause; an **unknown user gets always-false**, so a
+    caller that forgets to special-case a missing user denies rather than leaks.
+    Reused by the suggestion endpoints so they cannot enumerate values from
+    hosts the actor cannot see.
+    """
+    from sum_server.hosts.models import host_owner_teams, host_owner_users
+    from sum_server.teams.models import TeamMembership
+    from sum_server.users.service import get_user
+
+    user = await get_user(session, actor_user_id)
+    if user is None:
+        return false()
+    if user.is_admin:
+        return true()
+    return or_(
+        Host.id.in_(
+            select(host_owner_users.c.host_id).where(host_owner_users.c.user_id == actor_user_id)
+        ),
+        Host.id.in_(
+            select(host_owner_teams.c.host_id)
+            .join(TeamMembership, TeamMembership.team_id == host_owner_teams.c.team_id)
+            .where(TeamMembership.user_id == actor_user_id)
+        ),
+    )
+
+
 async def search_hosts(
     session: AsyncSession,
     *,
@@ -112,33 +148,8 @@ async def search_hosts(
     limit: int = MAX_RESULTS,
 ) -> list[HostSearchResult]:
     from sum_server.groups.service import effective_parameters_for_host
-    from sum_server.hosts.models import host_owner_teams, host_owner_users
-    from sum_server.teams.models import TeamMembership
-    from sum_server.users.service import get_user
 
-    user = await get_user(session, actor_user_id)
-    if user is None:
-        return []
-
-    stmt = select(Host)
-    if not user.is_admin:
-        stmt = stmt.where(
-            or_(
-                Host.id.in_(
-                    select(host_owner_users.c.host_id).where(
-                        host_owner_users.c.user_id == actor_user_id
-                    )
-                ),
-                Host.id.in_(
-                    select(host_owner_teams.c.host_id)
-                    .join(
-                        TeamMembership,
-                        TeamMembership.team_id == host_owner_teams.c.team_id,
-                    )
-                    .where(TeamMembership.user_id == actor_user_id)
-                ),
-            )
-        )
+    stmt = select(Host).where(await visibility_clause(session, actor_user_id=actor_user_id))
     stmt = _apply_sql_filters(stmt, search)
     stmt = stmt.order_by(Host.hostname.nulls_last(), Host.name).limit(limit)
     hosts = list((await session.execute(stmt)).scalars().all())
@@ -160,19 +171,23 @@ async def search_hosts(
             result.param_values = {k: effective.get(k) for k, _ in param_filters}
         results.append(result)
 
-    # Extra columns: fact values and matched components for the survivors.
-    if fact_keys and results:
+    # Extra columns: fact values and matched components for the survivors. The
+    # filtered keys and the always-shown display keys come back in one query.
+    if results:
         ids = [r.host.id for r in results]
+        wanted = set(fact_keys) | set(DISPLAY_FACT_KEYS)
         rows = (
             await session.execute(
-                select(HostFact).where(HostFact.host_id.in_(ids), HostFact.key.in_(fact_keys))
+                select(HostFact).where(HostFact.host_id.in_(ids), HostFact.key.in_(wanted))
             )
         ).scalars()
         by_host: dict[uuid.UUID, dict[str, Any]] = {}
         for f in rows:
             by_host.setdefault(f.host_id, {})[f.key] = f.value
         for r in results:
-            r.fact_values = by_host.get(r.host.id, {})
+            values = by_host.get(r.host.id, {})
+            r.fact_values = {k: values[k] for k in fact_keys if k in values}
+            r.display_facts = {k: values[k] for k in DISPLAY_FACT_KEYS if k in values}
     if search.component and results:
         like = f"%{search.component}%"
         ids = [r.host.id for r in results]
