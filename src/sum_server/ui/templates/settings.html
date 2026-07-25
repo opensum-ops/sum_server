@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import setting_row %}
 {% block title %}Settings — OpenSUM{% endblock %}
 {% block crumb %}Settings{% endblock %}
 
@@ -12,14 +13,18 @@
         <span class="pill pill-online">up to date</span>
         {% endif %}
     </div>
-    <div class="card-body">
-        <dl class="kv">
-            <dt>Current</dt><dd class="mono">{{ comp.current_version or "—" }}</dd>
-            <dt>Latest</dt><dd class="mono">{{ comp.latest_version or "unknown" }}</dd>
-            <dt>Checked</dt>
-            <dd class="muted">{{ comp.checked_at.strftime("%Y-%m-%d %H:%M UTC") if comp.checked_at else "never" }}</dd>
-            {% if comp.error %}<dt>Error</dt><dd class="mono" style="color: var(--red);">{{ comp.error }}</dd>{% endif %}
-        </dl>
+    <div class="card-body flush">
+        <div class="settings-list">
+            {{ setting_row("Current", comp.current_version, mono=true) }}
+            {{ setting_row("Latest", comp.latest_version or "unknown", mono=true) }}
+            {{ setting_row("Checked", comp.checked_at.strftime("%Y-%m-%d %H:%M UTC") if comp.checked_at else "never", dim=true) }}
+            {% if comp.error %}
+            <div class="setting-row">
+                <span class="setting-label">Error</span>
+                <span class="setting-value mono" style="color: var(--red);">{{ comp.error }}</span>
+            </div>
+            {% endif %}
+        </div>
         {% if comp.update_available and comp.notes %}
         <details class="release-notes">
             <summary>{{ comp.release_name or comp.latest_version }} — release notes</summary>
@@ -79,15 +84,23 @@
 
 <h3 class="section-title">System</h3>
 <div class="card">
-    <div class="card-body">
-        <dl class="kv">
-            <dt>Version</dt><dd class="mono">{{ version }}</dd>
-            <dt>Environment</dt><dd>{{ env }}</dd>
-            <dt>Signing key</dt><dd>{{ "loaded" if signing_loaded else "NOT loaded" }}</dd>
-            <dt>External URL</dt><dd class="mono">{{ external_url }}</dd>
-            <dt>Presence window</dt><dd>{{ presence_online_window }}s online / {{ presence_reboot_grace }}s reboot grace</dd>
-            <dt>Auto update-check</dt><dd>{{ "on" if update_check_enabled else "off" }}</dd>
-        </dl>
+    <div class="card-body flush">
+        <div class="settings-list">
+            {{ setting_row("Version", version, mono=true) }}
+            {{ setting_row("Environment", env) }}
+            {{ setting_row("Signing key", "loaded" if signing_loaded else "NOT loaded") }}
+            {{ setting_row("Presence window", "%ss online / %ss reboot grace" | format(presence_online_window, presence_reboot_grace)) }}
+            {{ setting_row("Auto update-check", "on" if update_check_enabled else "off") }}
+        </div>
     </div>
+    <details class="disclosure">
+        <summary>Advanced</summary>
+        <div class="disclosure-body">
+            <div class="settings-list">
+                {{ setting_row("External URL", external_url, mono=true) }}
+                {{ setting_row("Self-update", "available" if self_update_available else self_update_reason) }}
+            </div>
+        </div>
+    </details>
 </div>
 {% endblock %}

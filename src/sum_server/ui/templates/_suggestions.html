@@ -1,0 +1,9 @@
+{# Suggestion menu contents. app.js handles selection; this only renders. #}
+{% for s in suggestions %}
+<div class="suggest-item" role="option" data-value="{{ s.value }}">
+    <span class="mono">{{ s.label }}</span>
+    {% if s.hint %}<span class="suggest-hint">{{ s.hint }}</span>{% endif %}
+</div>
+{% else %}
+<div class="suggest-empty">No matches. Press Enter to search this as free text.</div>
+{% endfor %}

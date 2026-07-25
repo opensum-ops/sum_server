@@ -1,0 +1,49 @@
+{# Host result rows. Rendered both by /hosts (initial) and /hosts/rows (live
+   search swap), so the two can never drift apart. #}
+<table class="table">
+    <thead>
+        <tr>
+            <th>Host</th>
+            <th>State</th>
+            <th>Address</th>
+            {% for k in fact_keys %}<th>fact: {{ k }}</th>{% endfor %}
+            {% for k in param_keys %}<th>param: {{ k }}</th>{% endfor %}
+            {% if search.component %}<th>Matching components</th>{% endif %}
+            <th>Last seen</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in results %}
+        <tr class="row-link">
+            <td>
+                <a href="/hosts/{{ r.host.id }}">{{ r.host.hostname or r.host.name }}</a>
+                {% if r.host.hostname and r.host.name != r.host.hostname %}
+                <div class="muted">{{ r.host.name }}</div>
+                {% endif %}
+            </td>
+            <td><span class="pill pill-{{ r.host.presence }}">{{ r.host.presence | replace("_", " ") }}</span></td>
+            <td class="mono">{{ r.display_facts.get("primary_ipv4", "—") }}</td>
+            {% for k in fact_keys %}
+            <td class="mono">{{ r.fact_values.get(k, "—") }}</td>
+            {% endfor %}
+            {% for k in param_keys %}
+            <td class="mono">{{ r.param_values.get(k, "—") }}</td>
+            {% endfor %}
+            {% if search.component %}
+            <td class="mono">
+                {% for c in r.matched_components %}
+                <div>{{ c.kind }}: {{ c.model or c.serial or c.slot }}</div>
+                {% else %}—{% endfor %}
+            </td>
+            {% endif %}
+            <td class="muted">{{ r.host.last_heartbeat_at.strftime("%Y-%m-%d %H:%M:%S") if r.host.last_heartbeat_at else "never" }}</td>
+        </tr>
+        {% else %}
+        <tr class="empty-row">
+            <td colspan="{{ 4 + fact_keys|length + param_keys|length + (1 if search.component else 0) }}">
+                {% if has_filters %}No hosts match the active filters.{% else %}No hosts visible to you yet.{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

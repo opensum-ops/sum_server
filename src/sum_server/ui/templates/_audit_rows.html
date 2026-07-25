@@ -1,3 +1,5 @@
+{# Payload JSON is verbose; it rides in an .adv-col revealed by the card's
+   disclosure (see app.css) rather than crowding every row. #}
 {% for e in entries %}
 <tr>
     <td class="muted mono">{{ e.ts.strftime("%Y-%m-%d %H:%M:%S") }}</td>
@@ -10,14 +12,14 @@
         {{ e.target_kind }}
         {% if e.target_id %}<span class="mono truncate" title="{{ e.target_id }}">{{ e.target_id }}</span>{% endif %}
     </td>
-    <td><code class="truncate" title="{{ e.payload | tojson }}">{{ e.payload | tojson }}</code></td>
+    <td class="adv-col"><code class="truncate" title="{{ e.payload | tojson }}">{{ e.payload | tojson }}</code></td>
 </tr>
 {% else %}
-<tr class="empty-row"><td colspan="5">No audit entries match.</td></tr>
+<tr class="empty-row"><td colspan="4">No audit entries match.</td></tr>
 {% endfor %}
 {% if next_cursor %}
 <tr>
-    <td colspan="5" style="text-align: center;">
+    <td colspan="4" style="text-align: center;">
         <button class="btn btn-ghost btn-sm"
                 hx-get="/audit/rows?cursor={{ next_cursor }}{% if action_filter %}&action={{ action_filter }}{% endif %}{% if target_kind_filter %}&target_kind={{ target_kind_filter }}{% endif %}"
                 hx-target="closest tr"

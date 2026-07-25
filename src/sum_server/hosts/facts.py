@@ -43,6 +43,58 @@ async def get_fact_value(session: AsyncSession, *, host_id: uuid.UUID, key: str)
     ).scalar_one_or_none()
 
 
+async def distinct_fact_keys(
+    session: AsyncSession,
+    *,
+    actor_user_id: uuid.UUID,
+    prefix: str = "",
+    limit: int = 20,
+) -> list[str]:
+    """Fact keys observed on hosts this actor may read, for search suggestions.
+
+    Scoped through :func:`~sum_server.hosts.search.visibility_clause`: without it
+    the suggestions would let a non-admin enumerate keys from hosts they cannot
+    see.
+    """
+    from sum_server.hosts.search import visibility_clause
+
+    visible = select(Host.id).where(await visibility_clause(session, actor_user_id=actor_user_id))
+    stmt = select(HostFact.key).where(HostFact.host_id.in_(visible))
+    if prefix:
+        stmt = stmt.where(HostFact.key.ilike(f"{prefix}%"))
+    stmt = stmt.distinct().order_by(HostFact.key).limit(limit)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def distinct_fact_values(
+    session: AsyncSession,
+    *,
+    actor_user_id: uuid.UUID,
+    key: str,
+    prefix: str = "",
+    limit: int = 20,
+) -> list[str]:
+    """Values observed for one fact key, as display strings. Same scoping."""
+    from sum_server.hosts.search import visibility_clause
+
+    visible = select(Host.id).where(await visibility_clause(session, actor_user_id=actor_user_id))
+    stmt = select(HostFact.value).where(HostFact.host_id.in_(visible), HostFact.key == key)
+    rows = (await session.execute(stmt.distinct().limit(limit * 4))).scalars().all()
+
+    # Values are JSONB, so stringify here rather than in SQL; a fact can hold a
+    # number or bool, and the filter matches on the text form either way.
+    seen: list[str] = []
+    for value in rows:
+        text = value if isinstance(value, str) else str(value)
+        if prefix and not text.lower().startswith(prefix.lower()):
+            continue
+        if text not in seen:
+            seen.append(text)
+        if len(seen) >= limit:
+            break
+    return sorted(seen)
+
+
 async def ingest_facts(
     session: AsyncSession,
     *,

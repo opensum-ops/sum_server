@@ -10,87 +10,32 @@
     {% endif %}
 </div>
 
-<div class="card filter-card">
-    <form method="get" action="/hosts" class="filter-form">
-        {# Carry already-applied repeatable filters #}
-        {% for k, v in search.facts %}<input type="hidden" name="fact" value="{{ k }}:{{ v }}">{% endfor %}
-        {% for k, v in search.parameters %}<input type="hidden" name="param" value="{{ k }}:{{ v }}">{% endfor %}
-        <div class="filter-bar">
-            <input type="text" name="q" class="field" placeholder="name, hostname, description"
-                   value="{{ search.text or '' }}">
-            <select name="presence" class="field">
-                <option value="">state: any</option>
-                {% for p in presence_values %}
-                <option value="{{ p }}" {% if search.presence == p %}selected{% endif %}>{{ p | replace("_", " ") }}</option>
-                {% endfor %}
-            </select>
-            <select name="group" class="field">
-                <option value="">group: any</option>
-                {% for g in groups %}
-                <option value="{{ g.name }}" {% if search.group == g.name %}selected{% endif %}>{{ g.name }}</option>
-                {% endfor %}
-            </select>
-            <input type="text" name="component" class="field" placeholder="component contains…"
-                   value="{{ search.component or '' }}">
-            <input type="text" name="fact" class="field" placeholder="fact key:value">
-            <input type="text" name="param" class="field" placeholder="param key:value">
-            <button type="submit" class="btn btn-primary">Filter</button>
-            {% if chips %}<a href="/hosts" class="btn btn-ghost">Clear</a>{% endif %}
-        </div>
-    </form>
-    {% if chips %}
-    <div class="chip-row">
-        {% for chip in chips %}
-        <span class="chip">{{ chip.label }}<a href="{{ chip.remove_url }}" class="chip-x" title="Remove filter">&times;</a></span>
-        {% endfor %}
+{# One bar for every filter. app.js turns committed tokens into chips and
+   refetches the rows; without JavaScript the plain GET form below still
+   applies whatever was typed, and the chip links still remove filters. #}
+<form method="get" action="/hosts" class="searchbar" data-searchbar
+      data-tokens="{{ search_tokens }}">
+    <div class="searchbar-field">
+        <svg class="searchbar-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M15.5 15.5L20 20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span class="chip-row" data-chip-row>
+            {% for chip in chips %}
+            <span class="chip">{{ chip.label }}<a href="{{ chip.remove_url }}" class="chip-x" title="Remove filter">&times;</a></span>
+            {% endfor %}
+        </span>
+        <input type="text" name="q" data-search-input autocomplete="off" spellcheck="false"
+               aria-label="Search hosts" aria-autocomplete="list"
+               placeholder="{% if not chips %}search hosts, or type presence: group: fact: param: component:{% endif %}">
+        {% if chips %}<a href="/hosts" class="btn btn-ghost btn-sm searchbar-clear">Clear</a>{% endif %}
     </div>
-    {% endif %}
-</div>
+    <div class="suggest" role="listbox" data-suggest hidden></div>
+</form>
 
 <div class="card">
-    <div class="table-wrap">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Host</th>
-                    <th>Name</th>
-                    <th>State</th>
-                    {% for k in fact_keys %}<th>fact: {{ k }}</th>{% endfor %}
-                    {% for k in param_keys %}<th>param: {{ k }}</th>{% endfor %}
-                    {% if search.component %}<th>Matching components</th>{% endif %}
-                    <th>Last seen</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for r in results %}
-                <tr>
-                    <td><a href="/hosts/{{ r.host.id }}">{{ r.host.hostname or r.host.name }}</a></td>
-                    <td class="muted">{{ r.host.name }}</td>
-                    <td><span class="pill pill-{{ r.host.presence }}">{{ r.host.presence | replace("_", " ") }}</span></td>
-                    {% for k in fact_keys %}
-                    <td class="mono">{{ r.fact_values.get(k, "—") }}</td>
-                    {% endfor %}
-                    {% for k in param_keys %}
-                    <td class="mono">{{ r.param_values.get(k, "—") }}</td>
-                    {% endfor %}
-                    {% if search.component %}
-                    <td class="mono">
-                        {% for c in r.matched_components %}
-                        <div>{{ c.kind }}: {{ c.model or c.serial or c.slot }}</div>
-                        {% else %}—{% endfor %}
-                    </td>
-                    {% endif %}
-                    <td class="muted">{{ r.host.last_heartbeat_at.strftime("%Y-%m-%d %H:%M:%S") if r.host.last_heartbeat_at else "never" }}</td>
-                </tr>
-                {% else %}
-                <tr class="empty-row">
-                    <td colspan="{{ 4 + fact_keys|length + param_keys|length + (1 if search.component else 0) }}">
-                        {% if chips %}No hosts match the active filters.{% else %}No hosts visible to you yet.{% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="table-wrap" id="host-rows" data-search-results>
+        {% include "_host_rows.html" %}
     </div>
 </div>
 {% endblock %}
