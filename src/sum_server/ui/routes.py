@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
+from sum_server import __version__
 from sum_server.auth import service as auth_svc
 from sum_server.components import service as components_svc
 from sum_server.core.audit import AuditEntry
@@ -34,6 +35,13 @@ from sum_server.ui.deps import (
 
 router = APIRouter(tags=["ui"], include_in_schema=False)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+# Cache-buster for the static assets. Pages are dynamic and never cached, but
+# StaticFiles sets no Cache-Control, so browsers cache CSS and JS heuristically.
+# Without this, an update serves new markup against the previous stylesheet.
+# A global rather than per-route context: login.html does not go through
+# _render, and every future template gets it for free.
+templates.env.globals["asset_version"] = __version__
 
 
 def _cookie_secure() -> bool:
