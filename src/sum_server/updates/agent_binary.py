@@ -76,12 +76,23 @@ async def ensure_cached(session: AsyncSession, version: str) -> CachedBinary:
     path = _cache_path(version)
     expected_name = _binary_name(version)
 
+    # Read everything needed into plain values, then release the transaction
+    # SQLAlchemy autobegan for that read. Two reasons to let it go: the caller
+    # owns the write transaction and cannot open it while ours is still on the
+    # session (the discipline set on 2026-07-07), and everything below is slow
+    # network I/O that must not pin a database connection for the length of a
+    # 20MB download. Values are copied out first because rollback expires the
+    # ORM instance, and touching an expired attribute afterwards would try to
+    # refresh it from a connection we no longer hold.
     cache = await get_release_cache(session, COMPONENT_AGENT)
-    if cache is None or cache.latest_version != version:
+    latest_version = cache.latest_version if cache is not None else None
+    assets = {a["name"]: a["url"] for a in cache.assets} if cache is not None else {}
+    await session.rollback()
+
+    if latest_version != version:
         raise BinaryUnavailableError(
             f"agent {version} is not the known latest release; refresh update check first"
         )
-    assets = {a["name"]: a["url"] for a in cache.assets}
     if expected_name not in assets or f"{expected_name}.sha256" not in assets:
         raise BinaryUnavailableError(f"release has no {_ARCH_SUFFIX} asset for {version}")
 

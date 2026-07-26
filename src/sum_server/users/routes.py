@@ -86,6 +86,10 @@ async def update_user(
     if me is None:
         raise NotFoundError("user not found")
     by_admin = bool(me.is_admin)
+    # Release the transaction that read autobegan, or the handler cannot open
+    # its own below. by_admin is already a plain bool, so the expiry that
+    # rollback causes is harmless here.
+    await session.rollback()
     if actor.id != user_id and not by_admin:
         raise ForbiddenError("cannot update other users")
     if payload.is_admin is not None and not by_admin:

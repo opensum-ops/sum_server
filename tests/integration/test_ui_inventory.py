@@ -192,3 +192,34 @@ async def test_groups_page_visible_to_regular_user(client: AsyncClient, regular_
     r = await client.get("/groups")
     assert r.status_code == 200
     assert "Create group" not in r.text  # admin-only form hidden
+
+
+async def test_group_update_form(client: AsyncClient, admin_token: str) -> None:
+    """Rename/reparent through the UI form.
+
+    Untested until 2026-07-26, and broken: the handler read the group, released
+    the read transaction, then touched the now-expired instance inside its write
+    transaction, which raises MissingGreenlet under asyncio.
+    """
+    g = await client.post(
+        "/api/v1/groups",
+        headers=auth_h(admin_token),
+        json={"name": "rename-me", "description": "before"},
+    )
+    gid = g.json()["id"]
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+    csrf = client.cookies["sum_csrf"]
+
+    r = await client.post(
+        f"/groups/{gid}/update",
+        data={
+            "csrf_token": csrf,
+            "name": "renamed-group",
+            "description": "after",
+            "parent_id": "",
+        },
+    )
+    assert r.status_code == 303, r.text
+    detail = await client.get(f"/groups/{gid}")
+    assert "renamed-group" in detail.text
+    assert "after" in detail.text
