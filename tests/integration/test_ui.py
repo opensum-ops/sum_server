@@ -165,3 +165,25 @@ async def test_settings_page_admin_only(
     assert "Settings" in r.text
     assert "sum_server" in r.text  # updates panel
     assert "System" in r.text
+
+
+async def test_static_assets_are_cache_busted(client: AsyncClient, admin_user: Any) -> None:
+    """Pages are dynamic and never cached; StaticFiles sets no Cache-Control, so
+    CSS and JS are cached heuristically. Without a version on the URL, an update
+    serves new markup against the previous stylesheet, which is what broke the
+    nav after the 0.4.0 deploy.
+    """
+    from sum_server import __version__
+
+    login = await client.get("/login")
+    assert f"/static/app.css?v={__version__}" in login.text
+
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+    page = await client.get("/hosts")
+    for asset in ("app.css", "app.js", "htmx.min.js"):
+        assert f"/static/{asset}?v={__version__}" in page.text, asset
+
+    # The query string must not stop the asset being served.
+    css = await client.get(f"/static/app.css?v={__version__}")
+    assert css.status_code == 200
+    assert "nav-label" in css.text or "nav-item" in css.text
