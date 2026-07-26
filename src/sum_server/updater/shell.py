@@ -52,8 +52,9 @@ class ShellRunner:
 
     # --- Runner protocol ---------------------------------------------------
 
-    async def git_is_dirty(self) -> bool:
-        return bool((await self._run("git", "status", "--porcelain")).strip())
+    async def git_dirty_paths(self) -> str:
+        """Porcelain status output; empty means clean."""
+        return (await self._run("git", "status", "--porcelain")).strip()
 
     async def current_git_ref(self) -> str:
         return (await self._run("git", "rev-parse", "HEAD")).strip()
