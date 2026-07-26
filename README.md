@@ -52,6 +52,11 @@ The Settings page can check GitHub for new releases and update the server in pla
 SUM_SERVER_INSTALL_DIR=/opt/sum_server        # the git checkout this runs from
 SUM_SERVER_DATA_DIR=/var/lib/sum-server       # DB dumps + cached agent binaries
 SUM_SERVER_SERVICE_NAME=sum-server            # the systemd unit to restart
+SUM_SERVER_UV_BIN=/root/.local/bin/uv         # optional; see below
 ```
+
+The updater runs in its own transient systemd unit, which gets the systemd default `PATH` (no `~/.local/bin`). If `uv` was installed with the standard installer it will not be found there, so set `SUM_SERVER_UV_BIN` to its absolute path. The Settings panel refuses the update up front and tells you when `uv` cannot be located, rather than failing partway through and rolling back.
+
+You do **not** need to duplicate the other settings for the updater: the transient unit inherits nothing from the server process, so the server writes its effective configuration to `$SUM_SERVER_DATA_DIR/updater.env` (mode `0600`) and passes it to the unit explicitly. This works whether the service is configured through systemd `Environment=`, an `EnvironmentFile=`, or a `.env`.
 
 Without `INSTALL_DIR` (or when not root), the Settings panel shows self-update disabled with the reason — nothing else is affected. Agent updates are served from `DATA_DIR` and triggered per host from the host pages.

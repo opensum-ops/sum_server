@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from sum_server.core.db import SessionDep
 from sum_server.core.deps import AdminActor, UserActor
-from sum_server.core.errors import NotFoundError
+from sum_server.core.errors import ConflictError, NotFoundError
 from sum_server.updates import service as svc
 from sum_server.updates import system as system_svc
 from sum_server.updates.schemas import ServerUpdateStatus, UpdatesSummary
@@ -45,7 +45,15 @@ async def start_server_update(
             session, target_version=payload.target_version, actor=admin
         )
         status = ServerUpdateStatus.model_validate(row)
-    await system_svc.launch_updater()
+        row_id = row.id
+    # Outside the transaction: the row must be committed before the updater can
+    # see it. If the launch fails, terminate the row rather than leaving a
+    # non-terminal one behind to block every later attempt.
+    try:
+        await system_svc.launch_updater()
+    except Exception as exc:
+        await system_svc.fail_update_by_id(session, row_id, f"launch failed: {exc}")
+        raise ConflictError(f"could not launch updater: {exc}") from exc
     return status
 
 
