@@ -24,9 +24,13 @@ class _FakeSession:
 
     def __init__(self, cache: ReleaseCache | None) -> None:
         self._cache = cache
+        self.rolled_back = False
 
     async def execute(self, *_a: object, **_k: object) -> object:  # pragma: no cover
         raise AssertionError("ensure_cached should use get_release_cache, monkeypatched")
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
 
 
 def _mock_transport(sha_body: str) -> httpx.MockTransport:

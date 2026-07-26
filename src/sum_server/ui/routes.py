@@ -904,6 +904,10 @@ async def group_update(
     current = await get_group(session, group_id)
     if current is None:
         raise NotFoundError("group not found")
+    # Copy what we need before releasing the read transaction: rollback expires
+    # the instance, and touching an expired attribute afterwards refreshes it by
+    # synchronous attribute access, which raises MissingGreenlet under asyncio.
+    current_name, current_parent_id = current.name, current.parent_id
     new_name = name.strip() or None
     new_parent = uuid.UUID(parent_id) if parent_id else None
     await session.rollback()
@@ -911,9 +915,9 @@ async def group_update(
         await update_group(
             session,
             group_id=group_id,
-            name=new_name if new_name != current.name else None,
+            name=new_name if new_name != current_name else None,
             description=description.strip() or None,
-            parent_id=new_parent if new_parent != current.parent_id else None,
+            parent_id=new_parent if new_parent != current_parent_id else None,
         )
     return RedirectResponse(f"/groups/{group_id}", status_code=303)
 

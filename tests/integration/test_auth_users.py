@@ -70,3 +70,31 @@ async def test_logout_invalidates_token(client: AsyncClient, user_token: str) ->
 async def test_unauthenticated_endpoints_require_token(client: AsyncClient, path: str) -> None:
     r = await client.get(path)
     assert r.status_code == 401
+
+
+async def test_update_user_releases_its_read_transaction(
+    client: AsyncClient, admin_token: str
+) -> None:
+    """PATCH reads the actor to decide admin rights before opening its write
+    transaction. Until 2026-07-26 it never released that read, so every call
+    raised InvalidRequestError and returned a 500.
+    """
+    created = await client.post(
+        "/api/v1/users",
+        headers=auth_h(admin_token),
+        json={
+            "email": "patchme@example.com",
+            "display_name": "Before",
+            "password": "patch-pw-1234",
+        },
+    )
+    assert created.status_code == 201, created.text
+    user_id = created.json()["id"]
+
+    r = await client.patch(
+        f"/api/v1/users/{user_id}",
+        headers=auth_h(admin_token),
+        json={"display_name": "After"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["display_name"] == "After"

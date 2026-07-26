@@ -155,3 +155,63 @@ async def test_host_page_update_button(
 
     detail = await client.get(f"/hosts/{host_id}")
     assert f"updating → {TARGET}" in detail.text or "updating" in detail.text
+
+
+async def test_ui_agent_update_with_real_cache_lookup(
+    client: AsyncClient, admin_token: str, db_session: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Drive the button with the real ensure_cached, stubbing only the network.
+
+    The other UI test replaces ensure_cached wholesale, which hides that it
+    reads the release cache through the *request* session before the handler
+    opens its write transaction.
+    """
+    from tests.integration.test_ui import _ui_login
+
+    host_id, _ = await _enrolled(client, admin_token)
+    _seed_cached_binary()
+
+    # Populate release_cache so ensure_cached gets past its guards.
+    from sum_server.updates.models import COMPONENT_AGENT, ReleaseCache
+
+    db_session.add(
+        ReleaseCache(
+            repo=COMPONENT_AGENT,
+            latest_version=TARGET,
+            assets=[
+                {"name": f"sum-agent-v{TARGET}-linux-amd64", "url": "https://example.invalid/bin"},
+                {
+                    "name": f"sum-agent-v{TARGET}-linux-amd64.sha256",
+                    "url": "https://example.invalid/sha",
+                },
+            ],
+        )
+    )
+    await db_session.commit()
+
+    class _Resp:
+        text = SHA
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _Client:
+        async def __aenter__(self) -> _Client:
+            return self
+
+        async def __aexit__(self, *_a: object) -> None:
+            return None
+
+        async def get(self, _url: str) -> _Resp:
+            return _Resp()
+
+    monkeypatch.setattr(agent_binary.httpx, "AsyncClient", lambda **_kw: _Client())
+
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+    csrf = client.cookies["sum_csrf"]
+    r = await client.post(
+        f"/hosts/{host_id}/agent-update",
+        data={"csrf_token": csrf, "target_version": TARGET},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303, r.text
