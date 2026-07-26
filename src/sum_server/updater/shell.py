@@ -25,6 +25,7 @@ class ShellRunner:
         database_url: str,
         health_url: str,
         health_timeout_seconds: int = 120,
+        uv_bin: str = "",
     ) -> None:
         self._dir = install_dir
         self._service = service_name
@@ -32,6 +33,9 @@ class ShellRunner:
         self._health_url = health_url.rstrip("/")
         self._health_timeout = health_timeout_seconds
         self._alembic = str(install_dir / ".venv" / "bin" / "alembic")
+        # Absolute, because our transient unit's PATH is the systemd default and
+        # will not find a uv installed under ~/.local/bin.
+        self._uv = uv_bin or "uv"
 
     async def _run(self, *args: str) -> str:
         log.info("updater_exec", cmd=" ".join(args))
@@ -67,7 +71,7 @@ class ShellRunner:
         await self._run("git", "checkout", "--force", ref)
 
     async def uv_sync(self) -> None:
-        await self._run("uv", "sync", "--frozen")
+        await self._run(self._uv, "sync", "--frozen")
 
     async def alembic_upgrade(self) -> None:
         await self._run(self._alembic, "upgrade", "head")

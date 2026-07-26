@@ -1178,8 +1178,17 @@ async def settings_update_server(
     assert user.id is not None
     await _require_admin_ui(session, user.id)
     async with session.begin():
-        await system_svc.request_server_update(session, target_version=target_version, actor=user)
-    await system_svc.launch_updater()
+        row = await system_svc.request_server_update(
+            session, target_version=target_version, actor=user
+        )
+        row_id = row.id
+    # See updates/routes.py: a failed launch must not strand a non-terminal row.
+    # The UI reports it by marking the row and redirecting, so the Settings
+    # status panel shows the failure instead of an error page.
+    try:
+        await system_svc.launch_updater()
+    except Exception as exc:
+        await system_svc.fail_update_by_id(session, row_id, f"launch failed: {exc}")
     return RedirectResponse("/settings", status_code=303)
 
 

@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     install_dir: str = ""
     # systemd unit restarted by the self-updater.
     service_name: str = "sum-server"
+    # Absolute path to the `uv` binary. Blank means "discover it" (see
+    # updates/system.py::resolve_uv). Set this when uv lives somewhere the
+    # systemd unit's PATH does not cover, e.g. /root/.local/bin/uv.
+    uv_bin: str = ""
 
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     log_format: LogFormat = LogFormat.console

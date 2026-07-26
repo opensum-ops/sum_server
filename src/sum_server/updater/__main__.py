@@ -69,6 +69,7 @@ async def _main(dry_run: bool) -> int:
         service_name=settings.service_name,
         database_url=settings.database_url,
         health_url=health_url,
+        uv_bin=settings.uv_bin,
     )
     reporter = DbReporter(sm, row.id)
     final = await run_update(
