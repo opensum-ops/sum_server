@@ -1345,7 +1345,6 @@ wheels = [
 
 [[package]]
 name = "sum-server"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },

@@ -16,7 +16,7 @@ from typing import Protocol
 class Runner(Protocol):
     """Executes the real update steps. Each method raises on failure."""
 
-    async def git_is_dirty(self) -> bool: ...
+    async def git_dirty_paths(self) -> str: ...
     async def current_git_ref(self) -> str: ...
     async def pg_dump(self, dest: Path) -> None: ...
     async def git_fetch(self) -> None: ...
@@ -49,8 +49,13 @@ async def run_update(
     ``rolled_back`` — update failed; restored to ``current_version``.
     ``failed`` — could not complete *or* could not roll back (dump preserved).
     """
-    if await runner.git_is_dirty():
-        await report.set("failed", "working tree is dirty; refusing to update")
+    # Name the offending paths: the operator otherwise has to go and look, and
+    # the usual culprit (a lockfile rewritten by a non-frozen uv run) is not
+    # something they would guess.
+    dirty = await runner.git_dirty_paths()
+    if dirty:
+        listed = ", ".join(dirty.split("\n")[:5])
+        await report.set("failed", f"working tree is dirty; refusing to update: {listed}")
         return "failed"
 
     old_ref = await runner.current_git_ref()

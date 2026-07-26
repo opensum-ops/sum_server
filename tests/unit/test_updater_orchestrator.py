@@ -32,8 +32,8 @@ class FakeRunner:
             self._failed = True
             raise RuntimeError(f"{name} boom")
 
-    async def git_is_dirty(self) -> bool:
-        return self.dirty
+    async def git_dirty_paths(self) -> str:
+        return " M uv.lock\n?? stray.txt" if self.dirty else ""
 
     async def current_git_ref(self) -> str:
         return "oldsha"
@@ -67,10 +67,12 @@ class FakeRunner:
 class Recorder:
     def __init__(self) -> None:
         self.transitions: list[str] = []
+        self.details: list[str] = []
         self.dump_path: str | None = None
 
     async def set(self, status: str, detail: str | None = None) -> None:
         self.transitions.append(status)
+        self.details.append(detail or "")
 
     async def set_dump_path(self, path: str) -> None:
         self.dump_path = path
@@ -101,6 +103,10 @@ async def test_dirty_tree_refused(tmp_path: Path) -> None:
     result, rec = await _run(FakeRunner(dirty=True), tmp_path)
     assert result == "failed"
     assert rec.transitions == ["failed"]
+    # Name the offending paths: an operator reading only the status panel
+    # should not have to go and look for them.
+    assert "uv.lock" in rec.details[-1]
+    assert "stray.txt" in rec.details[-1]
 
 
 async def test_dump_failure_no_rollback(tmp_path: Path) -> None:
