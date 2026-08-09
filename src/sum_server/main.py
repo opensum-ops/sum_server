@@ -27,6 +27,7 @@ from sum_server.core.db import dispose_engine, get_engine, get_session, init_eng
 from sum_server.core.errors import install_error_handlers
 from sum_server.core.logging import RequestIdMiddleware, configure_logging
 from sum_server.core.security import signing
+from sum_server.install.routes import router as install_router
 from sum_server.settings import get_settings
 from sum_server.ui.deps import LoginRequiredError
 from sum_server.ui.routes import router as ui_router
@@ -135,6 +136,8 @@ def create_app() -> FastAPI:
     app.include_router(api_v1)
 
     app.include_router(ui_router)
+    # Public, unauthenticated: a host being installed has no agent token yet.
+    app.include_router(install_router)
     app.mount(
         "/static",
         StaticFiles(directory=str(Path(__file__).parent / "ui" / "static")),
