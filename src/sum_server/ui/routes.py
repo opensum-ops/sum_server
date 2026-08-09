@@ -340,6 +340,40 @@ def _server_url(request: Request) -> str:
     return configured.rstrip("/") if configured else str(request.base_url).rstrip("/")
 
 
+async def _install_context(
+    request: Request, session: SessionDep, enrollment_token: str
+) -> dict[str, object]:
+    """Commands for the enrollment wizard, shared by both token-minting routes.
+
+    Only the (cheap) version lookup happens here; staging the binary is left to
+    the installer endpoint so the page never blocks on a 20MB download. If the
+    server has no release to offer, the wizard says so rather than printing a
+    command that would fail on the host.
+    """
+    from sum_server.install import service as install_svc
+
+    server_url = _server_url(request)
+    ctx: dict[str, object] = {
+        "server_url": server_url,
+        "install_command": install_svc.install_command(
+            server_url=server_url, token=enrollment_token
+        ),
+        "bin_path": install_svc.BIN_PATH,
+        "state_dir": install_svc.STATE_DIR,
+        "unit_path": install_svc.UNIT_PATH,
+        "service_name": install_svc.SERVICE_NAME,
+    }
+    try:
+        ctx["agent_version"] = await install_svc.installable_version(session)
+        ctx["installer_available"] = True
+        ctx["installer_reason"] = ""
+    except install_svc.InstallerUnavailableError as exc:
+        ctx["agent_version"] = None
+        ctx["installer_available"] = False
+        ctx["installer_reason"] = str(exc)
+    return ctx
+
+
 @router.get("/hosts/enroll", response_class=HTMLResponse)
 async def host_enroll_form(request: Request, session: SessionDep, user: UiUser) -> HTMLResponse:
     assert user.id is not None
@@ -383,7 +417,7 @@ async def host_enroll_create(
             "host": host2,
             "enrollment_token": raw,
             "expires_at": expires_at,
-            "server_url": _server_url(request),
+            **await _install_context(request, session, raw),
         },
     )
 
@@ -417,7 +451,7 @@ async def host_enroll_token(
             "host": host,
             "enrollment_token": raw,
             "expires_at": expires_at,
-            "server_url": _server_url(request),
+            **await _install_context(request, session, raw),
         },
     )
 

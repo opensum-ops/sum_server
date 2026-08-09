@@ -1,0 +1,159 @@
+#!/bin/sh
+# OpenSUM agent installer, served by {{ server_url }}
+#
+# Installs sum-agent {{ version }} and its systemd unit, and optionally enrolls
+# the host. Safe to re-run: it upgrades the binary in place and never re-enrolls
+# a host that already has state.
+set -eu
+
+SERVER_URL="{{ server_url }}"
+VERSION="{{ version }}"
+ARCH="{{ arch }}"
+BIN_PATH="{{ bin_path }}"
+ENV_FILE="{{ env_file }}"
+STATE_DIR="{{ state_dir }}"
+UNIT_PATH="{{ unit_path }}"
+SERVICE="{{ service_name }}"
+
+TOKEN=""
+
+die() { echo "sum-agent install: $*" >&2; exit 1; }
+
+usage() {
+    cat <<USAGE
+Installs the OpenSUM agent ${VERSION} and its systemd service.
+
+  --token <token>   enroll with this one-time token, then start the service
+  --help            show this message
+
+Without --token the agent is installed but not enrolled, and the commands to
+finish are printed at the end.
+USAGE
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --token) TOKEN="${2-}"; [ -n "$TOKEN" ] || die "--token needs a value"; shift 2 ;;
+        --token=*) TOKEN="${1##--token=}"; shift ;;
+        --help|-h) usage; exit 0 ;;
+        *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+# --- preflight ---------------------------------------------------------------
+
+[ "$(id -u)" -eq 0 ] || die "must run as root; pipe to 'sudo sh' rather than 'sh'"
+
+machine="$(uname -m)"
+case "$machine" in
+    x86_64|amd64) ;;
+    *) die "unsupported architecture '$machine'; only x86_64 is published today" ;;
+esac
+
+command -v systemctl >/dev/null 2>&1 || die "systemd is required, but systemctl was not found"
+command -v curl >/dev/null 2>&1 || die "curl is required"
+
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d' ' -f1
+    else
+        die "need sha256sum or shasum to verify the download"
+    fi
+}
+
+# --- download and verify -----------------------------------------------------
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+base="${SERVER_URL}/install/sum-agent/${VERSION}/${ARCH}"
+echo "Fetching sum-agent ${VERSION} from ${SERVER_URL}"
+curl -fsSL "$base" -o "$tmp/sum-agent" || die "could not download the agent binary from $base"
+curl -fsSL "${base}.sha256" -o "$tmp/sum-agent.sha256" || die "could not download the checksum"
+
+expected="$(cut -d' ' -f1 < "$tmp/sum-agent.sha256")"
+actual="$(sha256_of "$tmp/sum-agent")"
+[ "$expected" = "$actual" ] || die "checksum mismatch: expected $expected, got $actual"
+
+# Rename rather than copy over the target: an atomic swap leaves a running
+# agent on its old inode instead of failing with "text file busy".
+chmod 0755 "$tmp/sum-agent"
+mv -f "$tmp/sum-agent" "${BIN_PATH}.new"
+mv -f "${BIN_PATH}.new" "$BIN_PATH"
+echo "Installed $BIN_PATH"
+
+# --- configuration -----------------------------------------------------------
+
+mkdir -p "$(dirname "$ENV_FILE")" "$STATE_DIR"
+chmod 0700 "$STATE_DIR"
+
+# SUM_AGENT_STATE_DIR must be identical here and in the enroll call below, or
+# enrollment state lands somewhere `run` will not look for it.
+cat > "$ENV_FILE" <<ENVEOF
+SUM_AGENT_SERVER_URL=${SERVER_URL}
+SUM_AGENT_STATE_DIR=${STATE_DIR}
+ENVEOF
+
+# The agent talks to the server through httpx, which trusts certifi rather than
+# the OS store, so a server behind a private CA fails verification even though
+# the curl above succeeded. That curl is the proof: it uses the OS store, so if
+# we got this far the system bundle already trusts this server.
+for bundle in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt; do
+    if [ -f "$bundle" ]; then
+        echo "SSL_CERT_FILE=${bundle}" >> "$ENV_FILE"
+        break
+    fi
+done
+
+chmod 0600 "$ENV_FILE"
+
+# After=network-online.target also matters at shutdown: it lets the agent send
+# its goodbye report before the network goes away, so the host reads as
+# rebooting or powered off rather than unreachable.
+cat > "$UNIT_PATH" <<UNITEOF
+[Unit]
+Description=OpenSUM agent
+Documentation=${SERVER_URL}
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=${ENV_FILE}
+ExecStart=${BIN_PATH} run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+systemctl daemon-reload
+echo "Installed $UNIT_PATH"
+
+# --- enrollment --------------------------------------------------------------
+
+if [ -f "$STATE_DIR/state.json" ]; then
+    echo "Host is already enrolled; leaving its enrollment untouched."
+elif [ -n "$TOKEN" ]; then
+    echo "Enrolling with $SERVER_URL"
+    SUM_AGENT_SERVER_URL="$SERVER_URL" SUM_AGENT_STATE_DIR="$STATE_DIR" \
+        "$BIN_PATH" enroll --token "$TOKEN"
+fi
+
+if [ -f "$STATE_DIR/state.json" ]; then
+    systemctl enable --now "$SERVICE"
+    systemctl restart "$SERVICE"
+    echo
+    echo "sum-agent ${VERSION} is installed and running."
+    echo "Logs: journalctl -u ${SERVICE} -f"
+else
+    echo
+    echo "sum-agent ${VERSION} is installed but not yet enrolled. To finish:"
+    echo
+    echo "  sudo SUM_AGENT_SERVER_URL=${SERVER_URL} SUM_AGENT_STATE_DIR=${STATE_DIR} \\"
+    echo "      ${BIN_PATH} enroll --token <enrollment-token>"
+    echo "  sudo systemctl enable --now ${SERVICE}"
+    echo
+fi
