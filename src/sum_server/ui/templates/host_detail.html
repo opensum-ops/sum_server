@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% from "_macros.html" import setting_row, setting_row_raw %}
-{% block title %}{{ host.hostname or host.name }} — OpenSUM{% endblock %}
-{% block crumb %}<a href="/hosts">Hosts</a> / {{ host.hostname or host.name }}{% endblock %}
+{% block title %}{{ host.hostname }} — OpenSUM{% endblock %}
+{% block crumb %}<a href="/hosts">Hosts</a> / {{ host.hostname }}{% endblock %}
 
 {% block content %}
 <div class="page-head">
-    <h2>{{ host.hostname or host.name }}</h2>
+    <h2>{{ host.hostname }}</h2>
     <span class="pill pill-{{ host.presence }}">{{ host.presence | replace("_", " ") }}</span>
     {% if host.status != "active" %}
     <span class="pill pill-{{ host.status }}">{{ host.status }}</span>
@@ -20,36 +20,30 @@
 
 <nav class="tabs">
     {% for t in tabs %}
-    <a href="/hosts/{{ host.id }}?tab={{ t }}" class="tab {% if tab == t %}active{% endif %}">
-        {{ {"overview": "Overview", "storage": "Storage", "network": "Network",
-            "hardware": "Hardware", "groups": "Groups &amp; Parameters"}[t] | safe }}
-    </a>
+    <a href="/hosts/{{ host.id }}?tab={{ t }}" class="tab {% if tab == t %}active{% endif %}">{{ tab_labels[t] }}</a>
     {% endfor %}
 </nav>
 
 {% if tab == "overview" %}
 <div class="detail-grid">
     <div class="card">
-        <div class="card-header"><span class="card-title">Summary</span></div>
+        <div class="card-header"><span class="card-title">Host</span></div>
         <div class="card-body flush">
             <div class="settings-list">
-                {{ setting_row("Hostname", host.hostname) }}
-                {{ setting_row("Name", host.name) }}
-                {{ setting_row("Description", host.description) }}
-                {{ setting_row("Last heartbeat", host.last_heartbeat_at.strftime("%Y-%m-%d %H:%M:%S") if host.last_heartbeat_at else "never") }}
+                {{ setting_row("Hostname", host.hostname, mono=true) }}
+                {% call setting_row_raw("Description") %}
+                    <form method="post" action="/hosts/{{ host.id }}/description" class="inline-edit">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="text" name="description" class="field field-inline" maxlength="2048"
+                               value="{{ host.description or '' }}" placeholder="no description">
+                        <button type="submit" class="btn btn-ghost btn-sm">Save</button>
+                    </form>
+                {% endcall %}
+                {% call setting_row_raw("Presence") %}
+                    <span class="pill pill-{{ host.presence }}">{{ host.presence | replace("_", " ") }}</span>
+                {% endcall %}
             </div>
         </div>
-        <details class="disclosure">
-            <summary>Advanced</summary>
-            <div class="disclosure-body">
-                <div class="settings-list">
-                    {{ setting_row("Host ID", host.id, mono=true) }}
-                    {{ setting_row("Boot ID", host.boot_id, mono=true) }}
-                    {{ setting_row("Lifecycle status", host.status) }}
-                    {{ setting_row("Created", host.created_at.strftime("%Y-%m-%d %H:%M:%S")) }}
-                </div>
-            </div>
-        </details>
     </div>
 
     <div class="card">
@@ -139,41 +133,64 @@
         </div>
         {% endif %}
     </div>
+
+    {# Identifiers and timing: needed when something is wrong, noise otherwise. #}
+    <details class="card card-collapsible">
+        <summary class="card-header"><span class="card-title">Advanced</span></summary>
+        <div class="card-body flush">
+            <div class="settings-list">
+                {{ setting_row("Last heartbeat", host.last_heartbeat_at.strftime("%Y-%m-%d %H:%M:%S") if host.last_heartbeat_at else "never") }}
+                {{ setting_row("Host ID", host.id, mono=true) }}
+                {{ setting_row("Boot ID", host.boot_id, mono=true) }}
+                {{ setting_row("Lifecycle status", host.status) }}
+                {{ setting_row("Created", host.created_at.strftime("%Y-%m-%d %H:%M:%S")) }}
+            </div>
+        </div>
+    </details>
+</div>
+
+{% elif tab == "facts" %}
+<div class="detail-grid">
+    <div class="card">
+        <div class="card-header"><span class="card-title">System</span></div>
+        <div class="card-body flush">
+            <div class="settings-list">
+                {{ setting_row("Operating system", (facts_map.get("os_name", "") ~ " " ~ facts_map.get("os_version", "")) | trim) }}
+                {{ setting_row("Kernel", facts_map.get("kernel"), mono=true) }}
+                {{ setting_row("Architecture", facts_map.get("arch"), mono=true) }}
+                {{ setting_row("Virtualization", facts_map.get("virtualization")) }}
+                {{ setting_row("Booted", facts_map.get("boot_time"), mono=true) }}
+                {{ setting_row("Agent version", facts_map.get("agent_version"), mono=true) }}
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="section card">
-    <div class="card-header"><span class="card-title">Facts</span></div>
-    <div class="card-body flush">
-        <div class="settings-list">
-            {{ setting_row("Operating system", (facts_map.get("os_name", "") ~ " " ~ facts_map.get("os_version", "")) | trim) }}
-            {{ setting_row("Kernel", facts_map.get("kernel"), mono=true) }}
-            {{ setting_row("Architecture", facts_map.get("arch"), mono=true) }}
-            {{ setting_row("Virtualization", facts_map.get("virtualization")) }}
-            {{ setting_row("Booted", facts_map.get("boot_time"), mono=true) }}
-            {{ setting_row("Agent version", facts_map.get("agent_version"), mono=true) }}
-        </div>
+    <div class="card-header">
+        <span class="card-title">All facts</span>
+        <span class="muted">{{ facts | length }} reported</span>
+    </div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>Key</th><th>Value</th><th class="adv-col">First seen</th><th class="adv-col">Last seen</th></tr></thead>
+            <tbody>
+                {% for f in facts %}
+                <tr>
+                    <td class="mono">{{ f.key }}</td>
+                    <td class="mono">{{ f.value | tojson if f.value is not string else f.value }}</td>
+                    <td class="muted adv-col">{{ f.first_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+                    <td class="muted adv-col">{{ f.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+                </tr>
+                {% else %}
+                <tr class="empty-row"><td colspan="2">No facts reported yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
     <details class="disclosure">
-        <summary>All {{ facts | length }} facts, with first and last seen</summary>
-        <div class="disclosure-body">
-            <div class="table-wrap">
-                <table class="table">
-                    <thead><tr><th>Key</th><th>Value</th><th>First seen</th><th>Last seen</th></tr></thead>
-                    <tbody>
-                        {% for f in facts %}
-                        <tr>
-                            <td class="mono">{{ f.key }}</td>
-                            <td class="mono">{{ f.value | tojson if f.value is not string else f.value }}</td>
-                            <td class="muted">{{ f.first_seen.strftime("%Y-%m-%d %H:%M") }}</td>
-                            <td class="muted">{{ f.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
-                        </tr>
-                        {% else %}
-                        <tr class="empty-row"><td colspan="4">No facts reported yet.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        <summary>Show first and last seen</summary>
+        <div class="disclosure-body">Facts are a full snapshot on every ingest: a key the agent stops observing is removed rather than kept stale.</div>
     </details>
 </div>
 
@@ -258,7 +275,7 @@
     </details>
 </div>
 
-{% elif tab == "hardware" %}
+{% elif tab == "cpu" %}
 <div class="section card">
     <div class="card-header"><span class="card-title">CPUs</span></div>
     <div class="table-wrap">
@@ -266,7 +283,7 @@
             <thead>
                 <tr>
                     <th>Vendor</th><th>Model</th><th class="num">Cores</th><th class="num">Threads</th><th class="num">Base clock</th>
-                    <th class="adv-col">Present</th>
+                    <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
             <tbody>
@@ -278,6 +295,7 @@
                     <td class="num">{{ c.attrs.get("threads", "—") }}</td>
                     <td class="num">{{ "%.2f GHz" | format(c.attrs.get("base_hz", 0) / 1000000000) if c.attrs.get("base_hz") else "—" }}</td>
                     <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
+                    <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
                 <tr class="empty-row"><td colspan="5">No CPUs reported.</td></tr>
@@ -286,10 +304,12 @@
         </table>
     </div>
     <details class="disclosure">
-        <summary>Show absent hardware</summary>
+        <summary>Show absent hardware and timestamps</summary>
         <div class="disclosure-body">Hardware that stopped being reported is retained rather than deleted.</div>
     </details>
 </div>
+
+{% elif tab == "memory" %}
 <div class="section card">
     <div class="card-header"><span class="card-title">Memory</span></div>
     <div class="table-wrap">
@@ -297,7 +317,7 @@
             <thead>
                 <tr>
                     <th>Slot</th><th class="num">Size</th><th class="num">Speed</th><th>Form factor</th>
-                    <th class="adv-col">Present</th>
+                    <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
             <tbody>
@@ -308,6 +328,7 @@
                     <td class="num">{{ c.attrs.get("speed_mts", 0) }} MT/s</td>
                     <td class="muted">{{ c.attrs.get("form_factor") or "—" }}</td>
                     <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
+                    <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
                 <tr class="empty-row"><td colspan="4">No memory reported.</td></tr>
@@ -316,10 +337,12 @@
         </table>
     </div>
     <details class="disclosure">
-        <summary>Show absent hardware</summary>
+        <summary>Show absent hardware and timestamps</summary>
         <div class="disclosure-body">DIMM-level detail needs <code>dmidecode</code> and is not collected yet.</div>
     </details>
 </div>
+
+{% elif tab == "gpu" %}
 <div class="section card">
     <div class="card-header"><span class="card-title">GPUs</span></div>
     <div class="table-wrap">
@@ -327,7 +350,7 @@
             <thead>
                 <tr>
                     <th>Vendor</th><th>Model</th><th class="num">VRAM</th><th>Driver</th>
-                    <th class="adv-col">Present</th>
+                    <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
             <tbody>
@@ -338,6 +361,7 @@
                     <td class="num">{{ c.attrs.get("vram_bytes", 0) | filesizeformat }}</td>
                     <td class="mono">{{ c.attrs.get("driver_version") or "—" }}</td>
                     <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
+                    <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
                 <tr class="empty-row"><td colspan="4">No GPUs reported.</td></tr>
@@ -346,7 +370,7 @@
         </table>
     </div>
     <details class="disclosure">
-        <summary>Show absent hardware</summary>
+        <summary>Show absent hardware and timestamps</summary>
         <div class="disclosure-body">Discrete GPUs come from <code>lspci</code>; NVIDIA driver detail needs <code>nvidia-smi</code>.</div>
     </details>
 </div>

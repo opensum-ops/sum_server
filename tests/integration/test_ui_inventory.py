@@ -11,10 +11,8 @@ from tests.conftest import auth_h
 from tests.integration.test_ui import _ui_login
 
 
-async def _mk_host(client: AsyncClient, token: str, name: str, hostname: str | None = None) -> str:
-    body: dict[str, Any] = {"name": name, "status": "active"}
-    if hostname:
-        body["hostname"] = hostname
+async def _mk_host(client: AsyncClient, token: str, hostname: str) -> str:
+    body: dict[str, Any] = {"hostname": hostname, "status": "active"}
     r = await client.post("/api/v1/hosts", headers=auth_h(token), json=body)
     assert r.status_code == 201, r.text
     host_id: str = r.json()["id"]
@@ -34,8 +32,8 @@ async def _agent_for(client: AsyncClient, token: str, host_id: str) -> str:
 
 
 async def test_host_search_filters(client: AsyncClient, admin_token: str) -> None:
-    a = await _mk_host(client, admin_token, "search-a", "alpha.example.com")
-    b = await _mk_host(client, admin_token, "search-b", "beta.example.com")
+    a = await _mk_host(client, admin_token, "alpha.example.com")
+    b = await _mk_host(client, admin_token, "beta.example.com")
 
     # Give alpha a kernel fact + a disk; beta stays bare.
     agent = await _agent_for(client, admin_token, a)
@@ -88,7 +86,7 @@ async def test_host_search_filters(client: AsyncClient, admin_token: str) -> Non
 
 
 async def test_group_pages_and_membership_flow(client: AsyncClient, admin_token: str) -> None:
-    host_id = await _mk_host(client, admin_token, "grp-ui-node", "grp-ui.example.com")
+    host_id = await _mk_host(client, admin_token, "grp-ui.example.com")
     await _ui_login(client, "admin@example.com", "admin-pw-1234")
     csrf = client.cookies["sum_csrf"]
 
@@ -159,7 +157,7 @@ async def test_enrollment_wizard_flow(client: AsyncClient, admin_user: Any) -> N
         "/hosts/enroll",
         data={
             "csrf_token": csrf,
-            "name": "wizard-node",
+            "hostname": "wizard-node",
             "description": "from the wizard",
             "ttl_seconds": "3600",
         },
@@ -223,3 +221,116 @@ async def test_group_update_form(client: AsyncClient, admin_token: str) -> None:
     detail = await client.get(f"/groups/{gid}")
     assert "renamed-group" in detail.text
     assert "after" in detail.text
+
+
+# --- Host pane restructure ---------------------------------------------------
+
+
+async def test_advanced_pane_is_present_but_closed(client: AsyncClient, admin_token: str) -> None:
+    """Identifiers and timing are reachable without being in the way."""
+    host_id = await _mk_host(client, admin_token, "adv-node")
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+
+    r = await client.get(f"/hosts/{host_id}")
+    assert "Advanced" in r.text
+    assert "card-collapsible" in r.text
+    # A <details> with no `open` attribute; the server renders it, the browser
+    # keeps it folded.
+    assert '<details class="card card-collapsible">' in r.text
+    # Moved out of the Host card, so it is only in the collapsed pane.
+    assert r.text.index("Advanced") < r.text.index("Last heartbeat")
+
+
+async def test_facts_have_their_own_pane(client: AsyncClient, admin_token: str) -> None:
+    """Facts left Overview: the fact table must not be on both."""
+    host_id = await _mk_host(client, admin_token, "facts-node")
+    agent = await _agent_for(client, admin_token, host_id)
+    await client.post(
+        "/api/v1/agents/inventory",
+        headers=auth_h(agent),
+        json={"facts": {"kernel": "6.9.3", "hostname": "facts-node"}, "components": []},
+    )
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+
+    overview = await client.get(f"/hosts/{host_id}")
+    assert "All facts" not in overview.text
+
+    facts = await client.get(f"/hosts/{host_id}", params={"tab": "facts"})
+    assert "All facts" in facts.text
+    assert "6.9.3" in facts.text
+
+
+async def test_description_is_editable(client: AsyncClient, admin_token: str) -> None:
+    host_id = await _mk_host(client, admin_token, "desc-node")
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+    csrf = client.cookies["sum_csrf"]
+
+    r = await client.post(
+        f"/hosts/{host_id}/description",
+        data={"csrf_token": csrf, "description": "rack 4, top shelf"},
+    )
+    assert r.status_code == 303, r.text
+
+    detail = await client.get(f"/hosts/{host_id}")
+    assert "rack 4, top shelf" in detail.text
+
+    # The service layer writes the audit entry; the UI route must not bypass it.
+    audit = await client.get(
+        "/api/v1/audit", headers=auth_h(admin_token), params={"action": "host.update"}
+    )
+    assert any(e["target_id"] == host_id for e in audit.json()["items"])
+
+
+async def test_description_clears_to_empty(client: AsyncClient, admin_token: str) -> None:
+    host_id = await _mk_host(client, admin_token, "clear-node")
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+    csrf = client.cookies["sum_csrf"]
+
+    await client.post(
+        f"/hosts/{host_id}/description", data={"csrf_token": csrf, "description": "temporary"}
+    )
+    r = await client.post(
+        f"/hosts/{host_id}/description", data={"csrf_token": csrf, "description": ""}
+    )
+    assert r.status_code == 303
+
+    got = await client.get(f"/api/v1/hosts/{host_id}", headers=auth_h(admin_token))
+    assert got.json()["description"] is None
+
+
+async def test_description_edit_needs_ownership(
+    client: AsyncClient, admin_token: str, regular_user: Any
+) -> None:
+    """Same gate as PATCH /api/v1/hosts/{id}: owner or admin, not any logged-in user."""
+    host_id = await _mk_host(client, admin_token, "not-yours")
+    await _ui_login(client, "user@example.com", "user-pw-1234")
+    csrf = client.cookies["sum_csrf"]
+
+    r = await client.post(
+        f"/hosts/{host_id}/description", data={"csrf_token": csrf, "description": "mine now"}
+    )
+    assert r.status_code == 403
+
+
+async def test_enrollment_wizard_takes_a_hostname(client: AsyncClient, admin_token: str) -> None:
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+    csrf = client.cookies["sum_csrf"]
+
+    r = await client.post(
+        "/hosts/enroll",
+        data={"csrf_token": csrf, "hostname": "seeded-name", "ttl_seconds": "3600"},
+    )
+    assert r.status_code == 200, r.text
+    assert "seeded-name" in r.text
+
+
+async def test_enrollment_wizard_generates_a_placeholder_hostname(
+    client: AsyncClient, admin_token: str
+) -> None:
+    """The agent overwrites it on first inventory, so an empty field is fine."""
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+    csrf = client.cookies["sum_csrf"]
+
+    r = await client.post("/hosts/enroll", data={"csrf_token": csrf, "ttl_seconds": "3600"})
+    assert r.status_code == 200, r.text
+    assert re.search(r"host-\d{8}-\d{6}", r.text)

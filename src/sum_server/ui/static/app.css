@@ -259,6 +259,39 @@ code, .mono {
     padding: 6px;
 }
 
+/* A card whose header is its own disclosure, so the whole pane folds rather
+   than just a footer strip. Chevron matches .disclosure below. */
+.card-collapsible > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.card-collapsible > summary::-webkit-details-marker {
+    display: none;
+}
+
+.card-collapsible > summary::after {
+    content: "\203A";
+    font-size: 15px;
+    line-height: 1;
+    color: var(--text-dim);
+    transition: transform 0.12s ease;
+}
+
+.card-collapsible[open] > summary::after {
+    transform: rotate(90deg);
+}
+
+.card-collapsible > summary:hover {
+    background: var(--row-hover);
+}
+
+/* Closed, the header is the whole card, so its bottom rule would double up
+   with the card border. */
+.card-collapsible:not([open]) > summary {
+    border-bottom: none;
+}
+
 .section {
     margin-top: 24px;
 }
@@ -519,12 +552,21 @@ code, .mono {
 /* Segmented control: the active segment is a solid fill, matching the menu. */
 
 .tabs {
-    display: inline-flex;
+    display: flex;
     gap: 2px;
     padding: 3px;
     margin-bottom: 18px;
     background: var(--sidebar);
     border-radius: var(--radius);
+    /* Eight segments overflow a narrow viewport; scroll the strip, never the page. */
+    max-width: 100%;
+    width: max-content;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+    display: none;
 }
 
 .tab {
@@ -881,6 +923,26 @@ fieldset[hidden] {
 
 .filter-bar .field {
     min-width: 180px;
+}
+
+/* An always-editable value in a setting row: input plus a save button, sized
+   to the row rather than the form defaults. */
+.inline-edit {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.field-inline {
+    /* Overrides the input[type=text] width:100% so it sits in the flex row. */
+    width: auto;
+    flex: 1 1 auto;
+    margin: 0;
+    padding: 4px 8px;
+    font-size: 13px;
+    min-width: 0;
+    max-width: 320px;
 }
 
 .alert {

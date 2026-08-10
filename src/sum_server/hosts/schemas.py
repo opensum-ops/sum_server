@@ -15,15 +15,13 @@ Presence = Literal[
 
 
 class HostCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=256)
-    hostname: str | None = Field(default=None, max_length=256)
+    hostname: str = Field(min_length=1, max_length=256)
     description: str | None = Field(default=None, max_length=2048)
     status: HostStatus = "provisioning"
 
 
 class HostUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=256)
-    hostname: str | None = Field(default=None, max_length=256)
+    hostname: str | None = Field(default=None, min_length=1, max_length=256)
     description: str | None = Field(default=None, max_length=2048)
     status: HostStatus | None = None
 
@@ -32,8 +30,7 @@ class HostResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    name: str
-    hostname: str | None
+    hostname: str
     description: str | None
     status: HostStatus
     presence: Presence

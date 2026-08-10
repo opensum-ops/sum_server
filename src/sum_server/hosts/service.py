@@ -142,8 +142,7 @@ async def create_host(session: AsyncSession, payload: HostCreate) -> Host:
         raise ConflictError("new hosts must be provisioning or active")
     host = Host(
         id=new_id(),
-        name=payload.name.strip(),
-        hostname=payload.hostname,
+        hostname=payload.hostname.strip(),
         description=payload.description,
         status=payload.status,
     )
@@ -154,7 +153,7 @@ async def create_host(session: AsyncSession, payload: HostCreate) -> Host:
         action="host.create",
         target_kind="host",
         target_id=host.id,
-        payload={"name": host.name, "status": host.status},
+        payload={"hostname": host.hostname, "status": host.status},
     )
     return host
 
@@ -174,15 +173,16 @@ async def update_host(
     if host.status == "decommissioned":
         raise ConflictError("host is decommissioned; cannot modify")
     changed: dict[str, object] = {}
-    if payload.name is not None and payload.name.strip() != host.name:
-        host.name = payload.name.strip()
-        changed["name"] = host.name
-    if payload.hostname is not None and payload.hostname != host.hostname:
-        host.hostname = payload.hostname
+    if payload.hostname is not None and payload.hostname.strip() != host.hostname:
+        host.hostname = payload.hostname.strip()
         changed["hostname"] = host.hostname
-    if payload.description is not None and payload.description != host.description:
-        host.description = payload.description
-        changed["description"] = host.description
+    if payload.description is not None:
+        # "" is how a form clears the field; store it as absent, not as an
+        # empty string, so the column has one representation of "unset".
+        description = payload.description.strip() or None
+        if description != host.description:
+            host.description = description
+            changed["description"] = host.description
     if payload.status is not None and payload.status != host.status:
         if payload.status == "decommissioned":
             raise ConflictError("use DELETE to decommission a host")

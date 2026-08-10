@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Enroll {{ host.hostname or host.name }} — OpenSUM{% endblock %}
-{% block crumb %}<a href="/hosts">Hosts</a> / <a href="/hosts/{{ host.id }}">{{ host.hostname or host.name }}</a> / Enroll{% endblock %}
+{% block title %}Enroll {{ host.hostname }} — OpenSUM{% endblock %}
+{% block crumb %}<a href="/hosts">Hosts</a> / <a href="/hosts/{{ host.id }}">{{ host.hostname }}</a> / Enroll{% endblock %}
 
 {% block content %}
 <div class="page-head">
-    <h2>Enroll {{ host.hostname or host.name }}</h2>
+    <h2>Enroll {{ host.hostname }}</h2>
     <span class="pill pill-pending">token expires {{ expires_at.strftime("%Y-%m-%d %H:%M UTC") }}</span>
 </div>
 

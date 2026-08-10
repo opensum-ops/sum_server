@@ -19,7 +19,7 @@ async def _host_with_facts(
     client: AsyncClient, token: str, name: str, hostname: str, facts: dict[str, Any]
 ) -> str:
     r = await client.post(
-        "/api/v1/hosts", headers=auth_h(token), json={"name": name, "status": "active"}
+        "/api/v1/hosts", headers=auth_h(token), json={"hostname": name, "status": "active"}
     )
     assert r.status_code == 201, r.text
     host_id: str = r.json()["id"]

@@ -95,7 +95,7 @@
                 <tbody>
                     {% for h in members %}
                     <tr>
-                        <td><a href="/hosts/{{ h.id }}">{{ h.hostname or h.name }}</a></td>
+                        <td><a href="/hosts/{{ h.id }}">{{ h.hostname }}</a></td>
                         <td><span class="pill pill-{{ h.presence }}">{{ h.presence | replace("_", " ") }}</span></td>
                         <td>
                             {% if is_admin %}
@@ -117,7 +117,7 @@
         <form method="post" action="/groups/{{ group.id }}/members/add">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="filter-bar" style="margin-top: 12px;">
-                <input type="text" name="identifier" class="field" placeholder="hostname or name" required>
+                <input type="text" name="identifier" class="field" placeholder="hostname" required>
                 <button type="submit" class="btn btn-ghost">Add member</button>
             </div>
         </form>

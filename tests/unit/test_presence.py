@@ -18,7 +18,7 @@ def _host(
     heartbeat_age: float | None = None,
     reported: str | None = None,
 ) -> Host:
-    h = Host(name="n1", status=status)
+    h = Host(hostname="n1", status=status)
     if heartbeat_age is not None:
         h.last_heartbeat_at = NOW - dt.timedelta(seconds=heartbeat_age)
     h.reported_presence = reported
