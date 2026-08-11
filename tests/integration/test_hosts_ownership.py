@@ -9,7 +9,7 @@ async def _create_host(client: AsyncClient, token: str, name: str = "host-1") ->
     r = await client.post(
         "/api/v1/hosts",
         headers=auth_h(token),
-        json={"name": name, "hostname": f"{name}.example.com", "status": "active"},
+        json={"hostname": f"{name}.example.com", "status": "active"},
     )
     assert r.status_code == 201, r.text
     return r.json()
@@ -19,7 +19,7 @@ async def test_admin_can_create_and_read_server(client: AsyncClient, admin_token
     host = await _create_host(client, admin_token)
     r = await client.get(f"/api/v1/hosts/{host['id']}", headers=auth_h(admin_token))
     assert r.status_code == 200
-    assert r.json()["name"] == "host-1"
+    assert r.json()["hostname"] == "host-1.example.com"
 
 
 async def test_non_owner_cannot_read_server(

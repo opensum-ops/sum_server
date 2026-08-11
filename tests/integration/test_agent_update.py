@@ -38,7 +38,7 @@ def _seed_cached_binary() -> Path:
 
 async def _enrolled(client: AsyncClient, admin_token: str) -> tuple[str, str]:
     hr = await client.post(
-        "/api/v1/hosts", headers=auth_h(admin_token), json={"name": "au", "status": "active"}
+        "/api/v1/hosts", headers=auth_h(admin_token), json={"hostname": "au", "status": "active"}
     )
     host_id = hr.json()["id"]
     er = await client.post(

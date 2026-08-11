@@ -387,7 +387,7 @@ async def host_enroll_create(
     session: SessionDep,
     user: UiUser,
     csrf_token: Annotated[str, Form()],
-    name: Annotated[str, Form()] = "",
+    hostname: Annotated[str, Form()] = "",
     description: Annotated[str, Form()] = "",
     ttl_seconds: Annotated[int, Form()] = 3600,
 ) -> HTMLResponse:
@@ -397,12 +397,13 @@ async def host_enroll_create(
     check_csrf(request, csrf_token)
     assert user.id is not None
     await _require_admin_ui(session, user.id)
-    host_name = name.strip() or f"host-{dt.datetime.now(tz=dt.UTC):%Y%m%d-%H%M%S}"
+    # A placeholder until the agent reports the real one on first inventory.
+    label = hostname.strip() or f"host-{dt.datetime.now(tz=dt.UTC):%Y%m%d-%H%M%S}"
     ttl = min(max(ttl_seconds, 60), 86400)
     async with session.begin():
         host = await hosts_svc.create_host(
             session,
-            HostCreate(name=host_name, description=description.strip() or None),
+            HostCreate(hostname=label, description=description.strip() or None),
         )
         raw, enr = await create_enrollment(session, host_id=host.id, actor=user, ttl_seconds=ttl)
         host_id, expires_at = host.id, enr.expires_at
@@ -458,7 +459,21 @@ async def host_enroll_token(
 
 # --- Hosts: detail (tabbed) -------------------------------------------------
 
-_HOST_TABS = ("overview", "storage", "network", "hardware", "groups")
+_HOST_TABS = ("overview", "facts", "storage", "network", "cpu", "memory", "gpu", "groups")
+
+# The single "hardware" pane was split into cpu/memory/gpu; keep old links working.
+_HOST_TAB_ALIASES = {"hardware": "cpu"}
+
+_HOST_TAB_LABELS = {
+    "overview": "Overview",
+    "facts": "Facts",
+    "storage": "Storage",
+    "network": "Network",
+    "cpu": "CPU",
+    "memory": "Memory",
+    "gpu": "GPU",
+    "groups": "Groups & Parameters",
+}
 
 
 @router.get("/hosts/{host_id}", response_class=HTMLResponse)
@@ -485,6 +500,7 @@ async def host_detail_page(
         raise NotFoundError("host not found")
     if not await hosts_svc.user_can_read(session, host, user.id):
         raise ForbiddenError("not visible")
+    tab = _HOST_TAB_ALIASES.get(tab, tab)
     if tab not in _HOST_TABS:
         tab = "overview"
 
@@ -529,6 +545,7 @@ async def host_detail_page(
             "host": host,
             "tab": tab,
             "tabs": _HOST_TABS,
+            "tab_labels": _HOST_TAB_LABELS,
             "components_by_kind": by_kind,
             "facts": facts,
             "facts_map": facts_map,
@@ -593,6 +610,30 @@ async def host_agent_update_cancel(
             raise NotFoundError("host not found")
         if host.target_agent_version:
             await agent_update.clear_target(session, host=host, reason="cancelled")
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@router.post("/hosts/{host_id}/description")
+async def host_description_set(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+    description: Annotated[str, Form()] = "",
+) -> RedirectResponse:
+    """Edit the one host attribute a human owns (facts are agent-observed)."""
+    from sum_server.hosts.schemas import HostUpdate
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_host_write_ui(session, host_id, user.id)
+    async with session.begin():
+        await hosts_svc.update_host(
+            session,
+            host_id=host_id,
+            payload=HostUpdate(description=description),
+        )
     return RedirectResponse(f"/hosts/{host_id}", status_code=303)
 
 
@@ -766,6 +807,27 @@ async def _require_admin_ui(session: SessionDep, actor_id: uuid.UUID) -> None:
         raise ForbiddenError("admin-only page")
 
 
+async def _require_host_write_ui(
+    session: SessionDep, host_id: uuid.UUID, actor_id: uuid.UUID
+) -> None:
+    """Owner-or-admin, matching ``PATCH /api/v1/hosts/{id}``.
+
+    Same read-then-release discipline as :func:`_require_admin_ui`: the reads
+    here autobegin a transaction, and the handler needs to own its own
+    ``async with session.begin()``.
+    """
+    ok = False
+    try:
+        host = await hosts_svc.get_host(session, host_id)
+        if host is None:
+            raise NotFoundError("host not found")
+        ok = await hosts_svc.user_can_read(session, host, actor_id)
+    finally:
+        await session.rollback()
+    if not ok:
+        raise ForbiddenError("not an owner")
+
+
 # --- Groups pages -----------------------------------------------------------
 
 
@@ -881,7 +943,7 @@ async def group_detail_page(
         list(
             (
                 await session.execute(
-                    sa_select(Host).where(Host.id.in_(member_ids)).order_by(Host.name)
+                    sa_select(Host).where(Host.id.in_(member_ids)).order_by(Host.hostname)
                 )
             )
             .scalars()
@@ -1026,7 +1088,6 @@ async def group_member_add(
     csrf_token: Annotated[str, Form()],
     identifier: Annotated[str, Form()],
 ) -> RedirectResponse:
-    from sqlalchemy import or_ as sa_or
     from sqlalchemy import select as sa_select
 
     from sum_server.groups.service import add_member
@@ -1037,9 +1098,7 @@ async def group_member_add(
     await _require_admin_ui(session, user.id)
     ident = identifier.strip()
     host = (
-        await session.execute(
-            sa_select(Host).where(sa_or(Host.hostname == ident, Host.name == ident)).limit(1)
-        )
+        await session.execute(sa_select(Host).where(Host.hostname == ident).limit(1))
     ).scalar_one_or_none()
     if host is None:
         raise NotFoundError("host not found")

@@ -88,7 +88,7 @@ async def test_server_list_and_detail_render(client: AsyncClient, admin_token: s
     cr = await client.post(
         "/api/v1/hosts",
         headers=auth_h(admin_token),
-        json={"name": "ui-node", "hostname": "ui-node.example.com", "status": "active"},
+        json={"hostname": "ui-node.example.com", "status": "active"},
     )
     assert cr.status_code == 201, cr.text
     host_id = cr.json()["id"]
@@ -101,18 +101,28 @@ async def test_server_list_and_detail_render(client: AsyncClient, admin_token: s
     r = await client.get(f"/hosts/{host_id}")
     assert r.status_code == 200
     assert "ui-node.example.com" in r.text
-    assert "Summary" in r.text  # overview tab is the default
-    assert "Facts" in r.text
+    assert "Host" in r.text  # overview tab is the default
 
-    # Tabs render their sections.
-    r = await client.get(f"/hosts/{host_id}", params={"tab": "storage"})
-    assert "Disks" in r.text
-    r = await client.get(f"/hosts/{host_id}", params={"tab": "network"})
-    assert "Interfaces" in r.text
+    # Every pane renders its own section.
+    for tab, marker in [
+        ("facts", "All facts"),
+        ("storage", "Disks"),
+        ("network", "Interfaces"),
+        ("cpu", "CPUs"),
+        ("memory", "Memory"),
+        ("gpu", "GPUs"),
+        ("groups", "Effective parameters"),
+    ]:
+        r = await client.get(f"/hosts/{host_id}", params={"tab": tab})
+        assert r.status_code == 200
+        assert marker in r.text, tab
+
+    # The old combined hardware pane was split; its links still land somewhere.
     r = await client.get(f"/hosts/{host_id}", params={"tab": "hardware"})
     assert "CPUs" in r.text
-    r = await client.get(f"/hosts/{host_id}", params={"tab": "groups"})
-    assert "Effective parameters" in r.text
+    # An unknown tab falls back rather than 404ing.
+    r = await client.get(f"/hosts/{host_id}", params={"tab": "nonsense"})
+    assert "Host" in r.text
 
 
 async def test_server_detail_hidden_from_non_owner(
@@ -121,7 +131,7 @@ async def test_server_detail_hidden_from_non_owner(
     cr = await client.post(
         "/api/v1/hosts",
         headers=auth_h(admin_token),
-        json={"name": "hidden-node", "status": "active"},
+        json={"hostname": "hidden-node", "status": "active"},
     )
     assert cr.status_code == 201
     host_id = cr.json()["id"]

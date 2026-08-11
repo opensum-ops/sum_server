@@ -12,13 +12,13 @@
     <div class="card-body">
         <p class="muted">
             This creates the host record and a one-time enrollment token. The
-            agent reports the real hostname on first inventory, so the name is
-            just a label until then.
+            agent reports the real hostname on first inventory and overwrites
+            whatever is set here, so this is just a placeholder until then.
         </p>
         <form method="post" action="/hosts/enroll">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label for="e-name">Name (optional)</label>
-            <input id="e-name" name="name" type="text" class="field" placeholder="auto-generated when empty">
+            <label for="e-hostname">Hostname (optional)</label>
+            <input id="e-hostname" name="hostname" type="text" class="field" placeholder="auto-generated when empty">
             <label for="e-desc">Description (optional)</label>
             <input id="e-desc" name="description" type="text" class="field" placeholder="rack 4, homelab VM, …">
             <label for="e-ttl">Token validity</label>

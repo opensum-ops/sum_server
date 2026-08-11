@@ -16,7 +16,9 @@ OLD_UA = {"User-Agent": "sum-agent/0.2.0"}
 
 async def _enroll(client: AsyncClient, admin_token: str) -> str:
     hr = await client.post(
-        "/api/v1/hosts", headers=auth_h(admin_token), json={"name": "compat", "status": "active"}
+        "/api/v1/hosts",
+        headers=auth_h(admin_token),
+        json={"hostname": "compat", "status": "active"},
     )
     host_id = hr.json()["id"]
     er = await client.post(

@@ -16,10 +16,7 @@
         {% for r in results %}
         <tr class="row-link">
             <td>
-                <a href="/hosts/{{ r.host.id }}">{{ r.host.hostname or r.host.name }}</a>
-                {% if r.host.hostname and r.host.name != r.host.hostname %}
-                <div class="muted">{{ r.host.name }}</div>
-                {% endif %}
+                <a href="/hosts/{{ r.host.id }}">{{ r.host.hostname }}</a>
             </td>
             <td><span class="pill pill-{{ r.host.presence }}">{{ r.host.presence | replace("_", " ") }}</span></td>
             <td class="mono">{{ r.display_facts.get("primary_ipv4", "—") }}</td>

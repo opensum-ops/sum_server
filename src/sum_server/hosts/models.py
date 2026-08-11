@@ -41,8 +41,10 @@ host_owner_teams = Table(
 class Host(Base, IdMixin, TimestampMixin):
     __tablename__ = "hosts"
 
-    name: Mapped[str] = mapped_column(String(256), nullable=False)
-    hostname: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # The single identity field. Seeded with the operator's label at enrollment
+    # and overwritten by the agent's observed hostname on first inventory, so a
+    # host is only ever known by one name.
+    hostname: Mapped[str] = mapped_column(String(256), nullable=False)
     description: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="provisioning")
     version: Mapped[int] = mapped_column(nullable=False, default=1)

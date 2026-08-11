@@ -18,7 +18,7 @@ async def test_full_agent_flow(client: AsyncClient, admin_token: str) -> None:
     sr = await client.post(
         "/api/v1/hosts",
         headers=auth_h(admin_token),
-        json={"name": "node-1", "status": "active"},
+        json={"hostname": "node-1", "status": "active"},
     )
     assert sr.status_code == 201
     host_id = sr.json()["id"]

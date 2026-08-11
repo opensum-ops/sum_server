@@ -71,7 +71,6 @@ def _apply_sql_filters(stmt: Select[tuple[Host]], search: HostSearch) -> Select[
         like = f"%{search.text}%"
         stmt = stmt.where(
             or_(
-                Host.name.ilike(like),
                 Host.hostname.ilike(like),
                 Host.description.ilike(like),
             )
@@ -151,7 +150,7 @@ async def search_hosts(
 
     stmt = select(Host).where(await visibility_clause(session, actor_user_id=actor_user_id))
     stmt = _apply_sql_filters(stmt, search)
-    stmt = stmt.order_by(Host.hostname.nulls_last(), Host.name).limit(limit)
+    stmt = stmt.order_by(Host.hostname).limit(limit)
     hosts = list((await session.execute(stmt)).scalars().all())
 
     results: list[HostSearchResult] = []

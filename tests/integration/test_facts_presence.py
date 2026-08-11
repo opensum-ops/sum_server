@@ -15,7 +15,7 @@ async def _enrolled_host(client: AsyncClient, admin_token: str) -> tuple[str, st
     hr = await client.post(
         "/api/v1/hosts",
         headers=auth_h(admin_token),
-        json={"name": "fp-node", "status": "provisioning"},
+        json={"hostname": "fp-node", "status": "provisioning"},
     )
     assert hr.status_code == 201, hr.text
     host_id = hr.json()["id"]
