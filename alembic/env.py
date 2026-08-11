@@ -26,6 +26,7 @@ from sum_server.groups.models import (  # noqa: F401
     HostParameter,
     host_groups,
 )
+from sum_server.history.models import HostChange  # noqa: F401
 from sum_server.hosts.models import (  # noqa: F401
     Host,
     HostFact,

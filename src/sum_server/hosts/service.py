@@ -15,6 +15,7 @@ from sum_server.core.errors import (
 )
 from sum_server.core.ids import new_id
 from sum_server.core.pagination import Cursor
+from sum_server.history import service as history
 from sum_server.hosts.models import (
     Host,
     host_owner_teams,
@@ -174,6 +175,15 @@ async def update_host(
         raise ConflictError("host is decommissioned; cannot modify")
     changed: dict[str, object] = {}
     if payload.hostname is not None and payload.hostname.strip() != host.hostname:
+        history.record(
+            session,
+            host_id=host.id,
+            scope="host",
+            field="hostname",
+            change="edit",
+            old=host.hostname,
+            new=payload.hostname.strip(),
+        )
         host.hostname = payload.hostname.strip()
         changed["hostname"] = host.hostname
     if payload.description is not None:
@@ -181,11 +191,29 @@ async def update_host(
         # empty string, so the column has one representation of "unset".
         description = payload.description.strip() or None
         if description != host.description:
+            history.record(
+                session,
+                host_id=host.id,
+                scope="host",
+                field="description",
+                change="add" if host.description is None else "edit",
+                old=host.description,
+                new=description,
+            )
             host.description = description
             changed["description"] = host.description
     if payload.status is not None and payload.status != host.status:
         if payload.status == "decommissioned":
             raise ConflictError("use DELETE to decommission a host")
+        history.record(
+            session,
+            host_id=host.id,
+            scope="host",
+            field="status",
+            change="edit",
+            old=host.status,
+            new=payload.status,
+        )
         host.status = payload.status
         changed["status"] = payload.status
     if changed:

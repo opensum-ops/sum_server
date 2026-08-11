@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from sum_server.components.schemas import ComponentIngest
 from sum_server.core.audit import write_audit
 from sum_server.core.errors import NotFoundError
 from sum_server.core.ids import new_id
+from sum_server.history import service as history
 
 
 def _utcnow() -> dt.datetime:
@@ -97,6 +99,42 @@ async def _find_slot_swap(
     ).scalar_one_or_none()
 
 
+def component_label(kind: str, slot: str | None, serial: str | None, model: str | None) -> str:
+    """How a component is named in a change timeline.
+
+    Captured at write time because the row it describes may later be replaced,
+    and "nvme0n1 changed" reads better than a bare uuid.
+    """
+    return slot or serial or model or kind
+
+
+def diff_component(existing: Component, entry: ComponentIngest) -> list[tuple[str, Any, Any]]:
+    """``(field, old, new)`` for everything that moved between stored and observed.
+
+    ``attrs`` is compared per key rather than as a blob, so a disk growing gives
+    ``attrs.size_bytes`` rather than an unreadable dict-versus-dict. Keys are
+    the union of both sides: a key the agent stopped reporting is a change too.
+    Identity fields (``kind``, ``serial``) are excluded because a change there
+    makes it a different component, handled by the swap path.
+    """
+    changes: list[tuple[str, Any, Any]] = []
+    for field in ("vendor", "model", "slot"):
+        old = getattr(existing, field)
+        new = getattr(entry, field)
+        if old != new:
+            changes.append((field, old, new))
+    if not existing.present:
+        changes.append(("present", False, True))
+
+    new_attrs = entry.attrs.model_dump()
+    old_attrs = existing.attrs or {}
+    for key in sorted(set(old_attrs) | set(new_attrs)):
+        old_v, new_v = old_attrs.get(key), new_attrs.get(key)
+        if old_v != new_v:
+            changes.append((f"attrs.{key}", old_v, new_v))
+    return changes
+
+
 async def ingest_inventory(
     session: AsyncSession,
     *,
@@ -131,6 +169,21 @@ async def ingest_inventory(
         if swap_target is not None:
             swap_target.present = False
             swap_target.last_seen = now
+            history.record(
+                session,
+                host_id=host_id,
+                scope="component",
+                component_kind=entry.kind,
+                subject_id=swap_target.id,
+                subject_label=component_label(
+                    entry.kind, entry.slot, swap_target.serial, swap_target.model
+                ),
+                field="serial",
+                change="del",
+                old=swap_target.serial,
+                new=entry.serial,
+                at=now,
+            )
             await write_audit(
                 session,
                 action="host.component_swap",
@@ -167,9 +220,43 @@ async def ingest_inventory(
             )
             session.add(comp)
             await session.flush()
+            history.record(
+                session,
+                host_id=host_id,
+                scope="component",
+                component_kind=entry.kind,
+                subject_id=comp.id,
+                subject_label=component_label(entry.kind, entry.slot, entry.serial, entry.model),
+                field="component",
+                change="add",
+                new={
+                    "vendor": entry.vendor,
+                    "model": entry.model,
+                    "serial": entry.serial,
+                    "slot": entry.slot,
+                },
+                at=now,
+            )
             seen_ids.add(comp.id)
             counts["created"] += 1
         else:
+            # Diff before assigning, or the old values are already gone.
+            for field, old_value, new_value in diff_component(existing, entry):
+                history.record(
+                    session,
+                    host_id=host_id,
+                    scope="component",
+                    component_kind=entry.kind,
+                    subject_id=existing.id,
+                    subject_label=component_label(
+                        entry.kind, entry.slot, entry.serial, entry.model
+                    ),
+                    field=field,
+                    change="edit",
+                    old=old_value,
+                    new=new_value,
+                    at=now,
+                )
             existing.vendor = entry.vendor
             existing.model = entry.model
             existing.slot = entry.slot
@@ -193,6 +280,19 @@ async def ingest_inventory(
         if c.id not in seen_ids:
             c.present = False
             c.last_seen = now
+            history.record(
+                session,
+                host_id=host_id,
+                scope="component",
+                component_kind=c.kind,
+                subject_id=c.id,
+                subject_label=component_label(c.kind, c.slot, c.serial, c.model),
+                field="present",
+                change="edit",
+                old=True,
+                new=False,
+                at=now,
+            )
             counts["marked_absent"] += 1
 
     return counts

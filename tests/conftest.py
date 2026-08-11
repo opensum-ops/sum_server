@@ -55,6 +55,7 @@ def _bootstrap_schema(_testcontainer_postgres: str) -> None:
     import sum_server.components.models
     import sum_server.core.audit
     import sum_server.groups.models
+    import sum_server.history.models
     import sum_server.hosts.models
     import sum_server.teams.models
     import sum_server.updates.models
@@ -106,7 +107,7 @@ async def _clean_tables() -> AsyncIterator[None]:
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.exec_driver_sql(
-            "TRUNCATE TABLE audit_entries, components, host_facts, "
+            "TRUNCATE TABLE audit_entries, components, host_facts, host_changes, "
             "host_groups, group_parameters, host_parameters, groups, "
             "release_cache, system_settings, server_updates, "
             "agent_enrollments, agent_tokens, session_tokens, "

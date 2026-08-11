@@ -4,21 +4,66 @@
    disclosure   - collapsed section for advanced/verbose data.
    Multi-entity collections stay real tables (see .table in app.css). #}
 
-{% macro setting_row(label, value, mono=false, dim=false) %}
+{% macro setting_row(label, value, mono=false, dim=false, hist=none) %}
 <div class="setting-row">
     <span class="setting-label">{{ label }}</span>
     <span class="setting-value{% if mono %} mono{% endif %}{% if dim %} muted{% endif %}">
         {{- value if value not in (none, "") else "—" -}}
     </span>
+    {% if hist %}{{ history_control(hist) }}{% endif %}
 </div>
 {% endmacro %}
 
 {# Value is caller-rendered markup (a pill, a form, a link). #}
-{% macro setting_row_raw(label) %}
+{% macro setting_row_raw(label, hist=none) %}
 <div class="setting-row">
     <span class="setting-label">{{ label }}</span>
     <span class="setting-value">{{ caller() }}</span>
+    {% if hist %}{{ history_control(hist) }}{% endif %}
 </div>
+{% endmacro %}
+
+{# When a value last moved, and what it was.
+
+   `hist` is {host_id, scope, count, field?, subject_id?, label?}. The control
+   is rendered even at zero changes and revealed on row hover (see app.css), so
+   the affordance is in the same place on every row without every row
+   carrying a visible badge. `label` names the row for a screen reader where
+   `field` would not, which is every component row. The timeline is fetched on
+   demand: a host page would otherwise ship every timeline it might be asked
+   for. #}
+{% macro history_control(hist) %}
+{% set qs = "scope=" ~ hist.scope
+    ~ ("&field=" ~ hist.field | urlencode if hist.field else "")
+    ~ ("&subject_id=" ~ hist.subject_id if hist.subject_id else "") %}
+<span class="hist" data-hist>
+    <button type="button" class="hist-btn{% if not hist.count %} hist-btn-empty{% endif %}"
+            aria-label="Change history for {{ hist.label or hist.field or 'this item' }}"
+            aria-expanded="false"
+            hx-get="/hosts/{{ hist.host_id }}/history?{{ qs }}"
+            hx-target="next .hist-pop"
+            hx-swap="innerHTML"
+            data-hist-toggle>
+        <span class="hist-icon" aria-hidden="true">&#8635;</span>{{ hist.count or "" }}
+    </button>
+    <div class="hist-pop" hidden></div>
+</span>
+{% endmacro %}
+
+{# The whole pane's changes, loaded when the disclosure is first opened. #}
+{% macro history_pane(host_id, count, scope=none, component_kind=none) %}
+{% set qs = ["limit=50"]
+    + (["scope=" ~ scope] if scope else [])
+    + (["component_kind=" ~ component_kind] if component_kind else []) %}
+<details class="disclosure">
+    <summary>Changes on this pane ({{ count }})</summary>
+    <div class="disclosure-body"
+         hx-get="/hosts/{{ host_id }}/history?{{ qs | join('&') }}"
+         hx-trigger="toggle once from:closest details"
+         hx-swap="innerHTML">
+        <span class="muted">Loading…</span>
+    </div>
+</details>
 {% endmacro %}
 
 {% macro disclosure(summary) %}
