@@ -1,0 +1,31 @@
+{# One field's, one component's, or one pane's timeline. Swapped in by HTMX.
+
+   `scoped` is on for a pane feed, which mixes fields and so has to name each
+   row; a single-field timeline would only repeat the label it hangs off. #}
+{% macro value(v) %}<span class="mono">{{ v | tojson if v is not string else v }}</span>{% endmacro %}
+{% if entries %}
+<ul class="hist-list">
+    {% for e in entries %}
+    <li class="hist-entry">
+        <span class="hist-when">{{ e.observed_at.strftime("%Y-%m-%d %H:%M:%S") }}</span>
+        <span class="hist-what">
+            {% if scoped %}<span class="hist-field mono">{{ e.subject_label or e.field }}{% if e.subject_label %} · {{ e.field }}{% endif %}</span>{% endif %}
+            {% if e.change == "add" %}
+            <span class="hist-kind hist-add">added</span>
+            {% if e.new_value is not none %}{{ value(e.new_value) }}{% endif %}
+            {% elif e.change == "del" %}
+            <span class="hist-kind hist-del">removed</span>
+            {% if e.old_value is not none %}<span class="hist-old">{{ value(e.old_value) }}</span>{% endif %}
+            {% else %}
+            <span class="hist-old">{{ value(e.old_value) }}</span>
+            <span class="hist-arrow">→</span>
+            {{ value(e.new_value) }}
+            {% endif %}
+        </span>
+        <span class="hist-who muted">{{ e.actor_kind }}</span>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<div class="hist-empty muted">No changes recorded.</div>
+{% endif %}

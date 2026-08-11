@@ -21,6 +21,8 @@ from sum_server.core.audit import AuditEntry
 from sum_server.core.db import SessionDep
 from sum_server.core.errors import AuthError, ForbiddenError, NotFoundError
 from sum_server.core.pagination import Cursor
+from sum_server.history import service as history_svc
+from sum_server.history.models import CHANGE_SCOPES
 from sum_server.hosts import service as hosts_svc
 from sum_server.hosts.presence import PRESENCE_VALUES
 from sum_server.hosts.search import HostSearch, HostSearchResult, search_hosts
@@ -464,6 +466,20 @@ _HOST_TABS = ("overview", "facts", "storage", "network", "cpu", "memory", "gpu",
 # The single "hardware" pane was split into cpu/memory/gpu; keep old links working.
 _HOST_TAB_ALIASES = {"hardware": "cpu"}
 
+# Which change scopes, and which component kind, each pane's history feed covers.
+# Groups spans two scopes because the pane shows memberships and host parameter
+# overrides side by side.
+_HOST_TAB_HISTORY: dict[str, tuple[tuple[str, ...], str | None]] = {
+    "overview": (("host",), None),
+    "facts": (("fact",), None),
+    "storage": (("component",), "disk"),
+    "network": (("component",), "nic"),
+    "cpu": (("component",), "cpu"),
+    "memory": (("component",), "memory"),
+    "gpu": (("component",), "gpu"),
+    "groups": (("group", "param"), None),
+}
+
 _HOST_TAB_LABELS = {
     "overview": "Overview",
     "facts": "Facts",
@@ -535,6 +551,21 @@ async def host_detail_page(
     agent_current = str(facts_map.get("agent_version") or "")
     agent_cache = await get_release_cache(session, COMPONENT_AGENT)
     latest_agent = agent_cache.latest_version if agent_cache else None
+
+    # Four grouped queries feed every history control on the page, rather than
+    # one count per rendered row. `subject_counts` covers components and groups
+    # alike, both being keyed by the id of the thing the row is about.
+    hist_host = await history_svc.field_counts(session, host_id=host_id, scope="host")
+    hist_fact = await history_svc.field_counts(session, host_id=host_id, scope="fact")
+    hist_param = await history_svc.field_counts(session, host_id=host_id, scope="param")
+    hist_subject = await history_svc.subject_counts(session, host_id=host_id)
+    pane_scopes, pane_kind = _HOST_TAB_HISTORY[tab]
+    pane_changes = await history_svc.scope_count(
+        session,
+        host_id=host_id,
+        scope=pane_scopes,
+        component_kind=pane_kind,
+    )
     return await _render(
         request,
         session,
@@ -559,6 +590,13 @@ async def host_detail_page(
             "latest_agent": latest_agent,
             "agent_update_available": is_newer(latest_agent, agent_current),
             "target_agent_version": host.target_agent_version,
+            "hist_host": hist_host,
+            "hist_fact": hist_fact,
+            "hist_param": hist_param,
+            "hist_subject": hist_subject,
+            "pane_changes": pane_changes,
+            "pane_scope": ",".join(pane_scopes),
+            "pane_kind": pane_kind,
         },
     )
 
@@ -611,6 +649,66 @@ async def host_agent_update_cancel(
         if host.target_agent_version:
             await agent_update.clear_target(session, host=host, reason="cancelled")
     return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@router.get("/hosts/{host_id}/history", response_class=HTMLResponse)
+async def host_history_fragment(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    scope: str = "",
+    field: str = "",
+    subject_id: str = "",
+    component_kind: str = "",
+    limit: int = 25,
+) -> HTMLResponse:
+    """One field's, one component's, or one pane's timeline, as an HTMX fragment.
+
+    Gated by the same visibility check as the host page: a change log leaks the
+    same information the page does.
+    """
+    assert user.id is not None
+    host = await hosts_svc.get_host(session, host_id)
+    if host is None:
+        raise NotFoundError("host not found")
+    if not await hosts_svc.user_can_read(session, host, user.id):
+        raise ForbiddenError("not visible")
+
+    # Comma-separated because the Groups pane covers two scopes. Unknown names
+    # are dropped rather than queried, so a hand-edited URL narrows to nothing
+    # recognisable instead of widening to the whole host.
+    scopes = [s for s in scope.split(",") if s in CHANGE_SCOPES] if scope else []
+    if scope and not scopes:
+        return templates.TemplateResponse(request, "_history.html", {"entries": [], "scoped": True})
+
+    subject: uuid.UUID | None = None
+    if subject_id:
+        try:
+            subject = uuid.UUID(subject_id)
+        except ValueError:
+            # Asked for a subject that cannot exist. Answering with the host's
+            # whole feed would be a wider answer than the question.
+            return templates.TemplateResponse(
+                request, "_history.html", {"entries": [], "scoped": True}
+            )
+
+    entries = await history_svc.changes(
+        session,
+        host_id=host_id,
+        scope=scopes or None,
+        field=field or None,
+        subject_id=subject,
+        component_kind=component_kind or None,
+        limit=min(max(limit, 1), 200),
+    )
+    return templates.TemplateResponse(
+        request,
+        "_history.html",
+        # A pane feed mixes fields, so it labels each row; a single-field
+        # timeline would just repeat the label it hangs off.
+        {"entries": entries, "scoped": not field},
+    )
 
 
 @router.post("/hosts/{host_id}/description")
