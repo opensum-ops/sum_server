@@ -1,8 +1,16 @@
 name: CI
 
+# No `branches` filter on pull_request: that filters on the PR's *base*, so a PR
+# stacked on another feature branch triggered nothing at all and merged ungated.
+# That is how #34 reached `refactor/host-panes` instead of `main` without a run.
+#
+# `edited` is here because GitHub auto-retargets a stacked PR to `main` when its
+# base merges, and that fires `edited` rather than `synchronize`. Without it the
+# PR keeps displaying checks computed against the old merge base. Jobs guard on
+# `changes.base` so an ordinary title or description edit does not rebuild.
 on:
   pull_request:
-    branches: [main]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -14,6 +22,11 @@ jobs:
   lint:
     name: Lint & syntax
     runs-on: ubuntu-latest
+    # Skip `edited` events that were not a base change (see the `on:` block).
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.action != 'edited'
+      || github.event.changes.base.ref.from != ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,6 +56,11 @@ jobs:
   typecheck:
     name: mypy (strict)
     runs-on: ubuntu-latest
+    # Skip `edited` events that were not a base change (see the `on:` block).
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.action != 'edited'
+      || github.event.changes.base.ref.from != ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,6 +84,11 @@ jobs:
   test:
     name: Tests (pytest + Postgres testcontainer via Podman)
     runs-on: ubuntu-latest
+    # Skip `edited` events that were not a base change (see the `on:` block).
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.action != 'edited'
+      || github.event.changes.base.ref.from != ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
