@@ -22,6 +22,7 @@ from sum_server.core.context import Actor
 from sum_server.core.errors import EnrollmentError, NotFoundError
 from sum_server.core.ids import new_id
 from sum_server.core.security.tokens import hash_token, mint_token
+from sum_server.history import service as history
 from sum_server.settings import get_settings
 
 
@@ -208,6 +209,20 @@ async def record_heartbeat(
                 target_kind="host",
                 target_id=host.id,
                 payload={"old_boot_id": host.boot_id, "new_boot_id": boot_id},
+            )
+        if boot_id and boot_id != host.boot_id:
+            # A reboot is worth a history row; the heartbeat that carries it is
+            # not. last_heartbeat_at moves every 30s and is deliberately never
+            # recorded, or the table would be nothing but heartbeats.
+            history.record(
+                session,
+                host_id=host.id,
+                scope="host",
+                field="boot_id",
+                change="add" if host.boot_id is None else "edit",
+                old=host.boot_id,
+                new=boot_id,
+                at=now,
             )
         if boot_id:
             host.boot_id = boot_id

@@ -494,6 +494,160 @@ code, .mono {
     display: table-row;
 }
 
+/* ---- Change history ---------------------------------------------------- */
+
+/* The control sits on every row that has a value, whether or not that value
+   has ever moved, so the affordance is always in the same place. At zero
+   changes it is invisible until the row is hovered or it takes focus. */
+.hist {
+    position: relative;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.hist-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    min-width: 26px;
+    justify-content: center;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.hist-icon {
+    font-size: 12px;
+    line-height: 1;
+}
+
+.hist-btn:hover,
+.hist-btn[aria-expanded="true"] {
+    color: var(--text);
+    border-color: var(--border);
+    background: var(--panel-2);
+}
+
+/* Nothing has changed here yet: keep the control, drop the weight. */
+.hist-btn-empty {
+    opacity: 0;
+}
+
+.setting-row:hover .hist-btn-empty,
+tr:hover .hist-btn-empty,
+.hist-btn-empty:focus-visible,
+.hist-btn-empty[aria-expanded="true"] {
+    opacity: 0.55;
+}
+
+/* Fixed, not absolute, because most of these controls live in a table cell and
+   `.table-wrap` is `overflow-x: auto`, which computes `overflow-y` to `auto`
+   too. An absolutely-positioned popover inside one gets clipped to the table
+   rather than overflowing the card. Viewport-positioned escapes that; app.js
+   places it against the button and closes it on scroll. */
+.hist-pop {
+    position: fixed;
+    z-index: 30;
+    min-width: 340px;
+    max-width: min(560px, 90vw);
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 6px;
+    text-align: left;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.hist-pop[hidden] {
+    display: none;
+}
+
+.hist-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.hist-entry {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.hist-entry + .hist-entry {
+    border-top: 1px solid var(--border);
+}
+
+.hist-when {
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}
+
+.hist-what {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.hist-field {
+    color: var(--text-dim);
+}
+
+/* The superseded value reads as struck-through history, not as current data. */
+.hist-old {
+    color: var(--text-dim);
+    text-decoration: line-through;
+}
+
+.hist-arrow {
+    color: var(--text-dim);
+}
+
+.hist-kind {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.hist-add {
+    color: var(--green);
+}
+
+.hist-del {
+    color: var(--red);
+}
+
+.hist-who {
+    margin-left: auto;
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+.hist-empty {
+    padding: 8px;
+    font-size: 12px;
+}
+
+/* Table cells hold the control too; keep the column tight. */
+td .hist {
+    margin-left: 0;
+}
+
 /* ---- Pills & presence -------------------------------------------------- */
 
 .pill {

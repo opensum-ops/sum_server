@@ -28,6 +28,7 @@ from sum_server.groups.resolution import (
     ancestor_chain,
     resolve_parameters,
 )
+from sum_server.history import service as history
 
 # --- Tree reads -------------------------------------------------------------
 
@@ -240,6 +241,15 @@ async def add_member(session: AsyncSession, *, group_id: uuid.UUID, host_id: uui
     if existing is not None:
         return False
     await session.execute(host_groups.insert().values(group_id=group_id, host_id=host_id))
+    history.record(
+        session,
+        host_id=host_id,
+        scope="group",
+        field="membership",
+        change="add",
+        subject_id=group_id,
+        subject_label=group.name,
+    )
     await write_audit(
         session,
         action="group.add_member",
@@ -251,12 +261,24 @@ async def add_member(session: AsyncSession, *, group_id: uuid.UUID, host_id: uui
 
 
 async def remove_member(session: AsyncSession, *, group_id: uuid.UUID, host_id: uuid.UUID) -> bool:
+    # Read the name before the delete: the timeline says which group was left,
+    # and after this returns the caller has no membership row to look it up by.
+    group = await get_group(session, group_id)
     result = await session.execute(
         host_groups.delete().where(
             host_groups.c.group_id == group_id, host_groups.c.host_id == host_id
         )
     )
     if result.rowcount:  # type: ignore[attr-defined]
+        history.record(
+            session,
+            host_id=host_id,
+            scope="group",
+            field="membership",
+            change="del",
+            subject_id=group_id,
+            subject_label=group.name if group is not None else None,
+        )
         await write_audit(
             session,
             action="group.remove_member",
@@ -359,9 +381,21 @@ async def set_host_parameter(
         )
     ).scalar_one_or_none()
     if row is None:
+        history.record(session, host_id=host_id, scope="param", field=key, change="add", new=value)
         row = HostParameter(id=new_id(), host_id=host_id, key=key, value=value)
         session.add(row)
     else:
+        # Re-setting a parameter to what it already was is not a change.
+        if row.value != value:
+            history.record(
+                session,
+                host_id=host_id,
+                scope="param",
+                field=key,
+                change="edit",
+                old=row.value,
+                new=value,
+            )
         row.value = value
     await write_audit(
         session,
@@ -381,6 +415,7 @@ async def unset_host_parameter(session: AsyncSession, *, host_id: uuid.UUID, key
     ).scalar_one_or_none()
     if row is None:
         return False
+    history.record(session, host_id=host_id, scope="param", field=key, change="del", old=row.value)
     await session.delete(row)
     await write_audit(
         session,

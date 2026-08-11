@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sum_server.core.ids import new_id
+from sum_server.history import service as history
 from sum_server.hosts.models import Host, HostFact
 
 
@@ -130,19 +131,59 @@ async def ingest_facts(
                 )
             )
             created.append(key)
+            history.record(
+                session,
+                host_id=host.id,
+                scope="fact",
+                field=key,
+                change="add",
+                new=value,
+                at=now,
+            )
         else:
             if row.value != value:
+                # Read the old value before the overwrite; it is the whole
+                # point of the history row.
+                history.record(
+                    session,
+                    host_id=host.id,
+                    scope="fact",
+                    field=key,
+                    change="edit",
+                    old=row.value,
+                    new=value,
+                    at=now,
+                )
                 row.value = value
                 updated.append(key)
             row.last_seen = now
 
     removed = sorted(set(existing) - set(facts))
     for key in removed:
+        history.record(
+            session,
+            host_id=host.id,
+            scope="fact",
+            field=key,
+            change="del",
+            old=existing[key].value,
+            at=now,
+        )
         await session.delete(existing[key])
 
     # Adopt the observed hostname onto the host row (hostname-first display).
     hostname = facts.get("hostname")
     if isinstance(hostname, str) and hostname and hostname != host.hostname:
+        history.record(
+            session,
+            host_id=host.id,
+            scope="host",
+            field="hostname",
+            change="edit",
+            old=host.hostname,
+            new=hostname,
+            at=now,
+        )
         host.hostname = hostname
 
     return {"created": sorted(created), "updated": sorted(updated), "removed": removed}

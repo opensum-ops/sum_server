@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import setting_row, setting_row_raw %}
+{% from "_macros.html" import setting_row, setting_row_raw, history_control, history_pane %}
 {% block title %}{{ host.hostname }} — OpenSUM{% endblock %}
 {% block crumb %}<a href="/hosts">Hosts</a> / {{ host.hostname }}{% endblock %}
 
@@ -30,8 +30,12 @@
         <div class="card-header"><span class="card-title">Host</span></div>
         <div class="card-body flush">
             <div class="settings-list">
-                {{ setting_row("Hostname", host.hostname, mono=true) }}
-                {% call setting_row_raw("Description") %}
+                {{ setting_row("Hostname", host.hostname, mono=true,
+                    hist={"host_id": host.id, "scope": "host", "field": "hostname",
+                          "count": hist_host.get("hostname", 0)}) }}
+                {% call setting_row_raw("Description",
+                    hist={"host_id": host.id, "scope": "host", "field": "description",
+                          "count": hist_host.get("description", 0)}) %}
                     <form method="post" action="/hosts/{{ host.id }}/description" class="inline-edit">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="text" name="description" class="field field-inline" maxlength="2048"
@@ -141,12 +145,22 @@
             <div class="settings-list">
                 {{ setting_row("Last heartbeat", host.last_heartbeat_at.strftime("%Y-%m-%d %H:%M:%S") if host.last_heartbeat_at else "never") }}
                 {{ setting_row("Host ID", host.id, mono=true) }}
-                {{ setting_row("Boot ID", host.boot_id, mono=true) }}
-                {{ setting_row("Lifecycle status", host.status) }}
+                {{ setting_row("Boot ID", host.boot_id, mono=true,
+                    hist={"host_id": host.id, "scope": "host", "field": "boot_id",
+                          "count": hist_host.get("boot_id", 0)}) }}
+                {{ setting_row("Lifecycle status", host.status,
+                    hist={"host_id": host.id, "scope": "host", "field": "status",
+                          "count": hist_host.get("status", 0)}) }}
                 {{ setting_row("Created", host.created_at.strftime("%Y-%m-%d %H:%M:%S")) }}
             </div>
         </div>
     </details>
+</div>
+
+{# Own card: a second disclosure inside a table card would also trip the
+   :has() rule that reveals that table's advanced columns. #}
+<div class="section card">
+    {{ history_pane(host.id, pane_changes, scope=pane_scope, component_kind=pane_kind) }}
 </div>
 
 {% elif tab == "facts" %}
@@ -155,12 +169,24 @@
         <div class="card-header"><span class="card-title">System</span></div>
         <div class="card-body flush">
             <div class="settings-list">
-                {{ setting_row("Operating system", (facts_map.get("os_name", "") ~ " " ~ facts_map.get("os_version", "")) | trim) }}
-                {{ setting_row("Kernel", facts_map.get("kernel"), mono=true) }}
-                {{ setting_row("Architecture", facts_map.get("arch"), mono=true) }}
-                {{ setting_row("Virtualization", facts_map.get("virtualization")) }}
-                {{ setting_row("Booted", facts_map.get("boot_time"), mono=true) }}
-                {{ setting_row("Agent version", facts_map.get("agent_version"), mono=true) }}
+                {{ setting_row("Operating system", (facts_map.get("os_name", "") ~ " " ~ facts_map.get("os_version", "")) | trim,
+                    hist={"host_id": host.id, "scope": "fact", "field": "os_version",
+                          "count": hist_fact.get("os_version", 0)}) }}
+                {{ setting_row("Kernel", facts_map.get("kernel"), mono=true,
+                    hist={"host_id": host.id, "scope": "fact", "field": "kernel",
+                          "count": hist_fact.get("kernel", 0)}) }}
+                {{ setting_row("Architecture", facts_map.get("arch"), mono=true,
+                    hist={"host_id": host.id, "scope": "fact", "field": "arch",
+                          "count": hist_fact.get("arch", 0)}) }}
+                {{ setting_row("Virtualization", facts_map.get("virtualization"),
+                    hist={"host_id": host.id, "scope": "fact", "field": "virtualization",
+                          "count": hist_fact.get("virtualization", 0)}) }}
+                {{ setting_row("Booted", facts_map.get("boot_time"), mono=true,
+                    hist={"host_id": host.id, "scope": "fact", "field": "boot_time",
+                          "count": hist_fact.get("boot_time", 0)}) }}
+                {{ setting_row("Agent version", facts_map.get("agent_version"), mono=true,
+                    hist={"host_id": host.id, "scope": "fact", "field": "agent_version",
+                          "count": hist_fact.get("agent_version", 0)}) }}
             </div>
         </div>
     </div>
@@ -173,17 +199,19 @@
     </div>
     <div class="table-wrap">
         <table class="table">
-            <thead><tr><th>Key</th><th>Value</th><th class="adv-col">First seen</th><th class="adv-col">Last seen</th></tr></thead>
+            <thead><tr><th>Key</th><th>Value</th><th class="num">History</th><th class="adv-col">First seen</th><th class="adv-col">Last seen</th></tr></thead>
             <tbody>
                 {% for f in facts %}
                 <tr>
                     <td class="mono">{{ f.key }}</td>
                     <td class="mono">{{ f.value | tojson if f.value is not string else f.value }}</td>
+                    <td class="num">{{ history_control({"host_id": host.id, "scope": "fact",
+                        "field": f.key, "count": hist_fact.get(f.key, 0)}) }}</td>
                     <td class="muted adv-col">{{ f.first_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                     <td class="muted adv-col">{{ f.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
-                <tr class="empty-row"><td colspan="2">No facts reported yet.</td></tr>
+                <tr class="empty-row"><td colspan="3">No facts reported yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -194,6 +222,12 @@
     </details>
 </div>
 
+{# Own card: a second disclosure inside a table card would also trip the
+   :has() rule that reveals that table's advanced columns. #}
+<div class="section card">
+    {{ history_pane(host.id, pane_changes, scope=pane_scope, component_kind=pane_kind) }}
+</div>
+
 {% elif tab == "storage" %}
 <div class="section card">
     <div class="card-header"><span class="card-title">Disks</span></div>
@@ -202,6 +236,7 @@
             <thead>
                 <tr>
                     <th>Device</th><th>Vendor</th><th>Model</th><th class="num">Size</th><th>Bus</th>
+                    <th class="num">History</th>
                     <th class="adv-col">Serial</th><th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
@@ -213,12 +248,15 @@
                     <td>{{ c.model or "—" }}</td>
                     <td class="num">{{ c.attrs.get("size_bytes", 0) | filesizeformat }}</td>
                     <td class="mono">{{ c.attrs.get("bus", "—") }}</td>
+                    <td class="num">{{ history_control({"host_id": host.id, "scope": "component",
+                        "subject_id": c.id, "label": c.slot or c.serial or c.model or "disk",
+                        "count": hist_subject.get(c.id, 0)}) }}</td>
                     <td class="mono adv-col">{{ c.serial or "—" }}</td>
                     <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
                     <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
-                <tr class="empty-row"><td colspan="5">No disks reported.</td></tr>
+                <tr class="empty-row"><td colspan="6">No disks reported.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -227,6 +265,12 @@
         <summary>Show serials, absent hardware, and timestamps</summary>
         <div class="disclosure-body">Absent hardware is kept after it stops being reported, so a swap stays visible in the record.</div>
     </details>
+</div>
+
+{# Own card: a second disclosure inside a table card would also trip the
+   :has() rule that reveals that table's advanced columns. #}
+<div class="section card">
+    {{ history_pane(host.id, pane_changes, scope=pane_scope, component_kind=pane_kind) }}
 </div>
 
 {% elif tab == "network" %}
@@ -250,6 +294,7 @@
             <thead>
                 <tr>
                     <th>Interface</th><th>MAC</th><th class="num">Speed</th><th>Driver</th>
+                    <th class="num">History</th>
                     <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
@@ -260,11 +305,14 @@
                     <td class="mono">{{ c.attrs.get("mac", "—") }}</td>
                     <td class="num">{{ c.attrs.get("speed_mbps", 0) }} Mb/s</td>
                     <td class="mono">{{ c.attrs.get("driver") or "—" }}</td>
+                    <td class="num">{{ history_control({"host_id": host.id, "scope": "component",
+                        "subject_id": c.id, "label": c.slot or c.model or "nic",
+                        "count": hist_subject.get(c.id, 0)}) }}</td>
                     <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
                     <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
-                <tr class="empty-row"><td colspan="4">No network interfaces reported.</td></tr>
+                <tr class="empty-row"><td colspan="5">No network interfaces reported.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -275,6 +323,12 @@
     </details>
 </div>
 
+{# Own card: a second disclosure inside a table card would also trip the
+   :has() rule that reveals that table's advanced columns. #}
+<div class="section card">
+    {{ history_pane(host.id, pane_changes, scope=pane_scope, component_kind=pane_kind) }}
+</div>
+
 {% elif tab == "cpu" %}
 <div class="section card">
     <div class="card-header"><span class="card-title">CPUs</span></div>
@@ -283,6 +337,7 @@
             <thead>
                 <tr>
                     <th>Vendor</th><th>Model</th><th class="num">Cores</th><th class="num">Threads</th><th class="num">Base clock</th>
+                    <th class="num">History</th>
                     <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
@@ -294,11 +349,14 @@
                     <td class="num">{{ c.attrs.get("cores", "—") }}</td>
                     <td class="num">{{ c.attrs.get("threads", "—") }}</td>
                     <td class="num">{{ "%.2f GHz" | format(c.attrs.get("base_hz", 0) / 1000000000) if c.attrs.get("base_hz") else "—" }}</td>
+                    <td class="num">{{ history_control({"host_id": host.id, "scope": "component",
+                        "subject_id": c.id, "label": c.model or c.vendor or "cpu",
+                        "count": hist_subject.get(c.id, 0)}) }}</td>
                     <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
                     <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
-                <tr class="empty-row"><td colspan="5">No CPUs reported.</td></tr>
+                <tr class="empty-row"><td colspan="6">No CPUs reported.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -309,6 +367,12 @@
     </details>
 </div>
 
+{# Own card: a second disclosure inside a table card would also trip the
+   :has() rule that reveals that table's advanced columns. #}
+<div class="section card">
+    {{ history_pane(host.id, pane_changes, scope=pane_scope, component_kind=pane_kind) }}
+</div>
+
 {% elif tab == "memory" %}
 <div class="section card">
     <div class="card-header"><span class="card-title">Memory</span></div>
@@ -317,6 +381,7 @@
             <thead>
                 <tr>
                     <th>Slot</th><th class="num">Size</th><th class="num">Speed</th><th>Form factor</th>
+                    <th class="num">History</th>
                     <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
@@ -327,11 +392,14 @@
                     <td class="num">{{ c.attrs.get("size_bytes", 0) | filesizeformat }}</td>
                     <td class="num">{{ c.attrs.get("speed_mts", 0) }} MT/s</td>
                     <td class="muted">{{ c.attrs.get("form_factor") or "—" }}</td>
+                    <td class="num">{{ history_control({"host_id": host.id, "scope": "component",
+                        "subject_id": c.id, "label": c.slot or c.model or "memory",
+                        "count": hist_subject.get(c.id, 0)}) }}</td>
                     <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
                     <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
-                <tr class="empty-row"><td colspan="4">No memory reported.</td></tr>
+                <tr class="empty-row"><td colspan="5">No memory reported.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -342,6 +410,12 @@
     </details>
 </div>
 
+{# Own card: a second disclosure inside a table card would also trip the
+   :has() rule that reveals that table's advanced columns. #}
+<div class="section card">
+    {{ history_pane(host.id, pane_changes, scope=pane_scope, component_kind=pane_kind) }}
+</div>
+
 {% elif tab == "gpu" %}
 <div class="section card">
     <div class="card-header"><span class="card-title">GPUs</span></div>
@@ -350,6 +424,7 @@
             <thead>
                 <tr>
                     <th>Vendor</th><th>Model</th><th class="num">VRAM</th><th>Driver</th>
+                    <th class="num">History</th>
                     <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
@@ -360,11 +435,14 @@
                     <td>{{ c.model or "—" }}</td>
                     <td class="num">{{ c.attrs.get("vram_bytes", 0) | filesizeformat }}</td>
                     <td class="mono">{{ c.attrs.get("driver_version") or "—" }}</td>
+                    <td class="num">{{ history_control({"host_id": host.id, "scope": "component",
+                        "subject_id": c.id, "label": c.model or c.vendor or "gpu",
+                        "count": hist_subject.get(c.id, 0)}) }}</td>
                     <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
                     <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
                 {% else %}
-                <tr class="empty-row"><td colspan="4">No GPUs reported.</td></tr>
+                <tr class="empty-row"><td colspan="5">No GPUs reported.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -375,6 +453,12 @@
     </details>
 </div>
 
+{# Own card: a second disclosure inside a table card would also trip the
+   :has() rule that reveals that table's advanced columns. #}
+<div class="section card">
+    {{ history_pane(host.id, pane_changes, scope=pane_scope, component_kind=pane_kind) }}
+</div>
+
 {% elif tab == "groups" %}
 <div class="detail-grid">
     <div class="card">
@@ -383,6 +467,9 @@
             {% for g in member_groups %}
             <div class="param-row">
                 <a href="/groups/{{ g.id }}">{{ g.name }}</a>
+                {{ history_control({"host_id": host.id, "scope": "group",
+                    "subject_id": g.id, "label": "membership of " ~ g.name,
+                    "count": hist_subject.get(g.id, 0)}) }}
                 {% if is_admin %}
                 <form method="post" action="/hosts/{{ host.id }}/groups/remove" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -414,6 +501,8 @@
             {% for p in host_params %}
             <div class="param-row">
                 <span class="mono">{{ p.key }}</span> = <span class="mono">{{ p.value | tojson }}</span>
+                {{ history_control({"host_id": host.id, "scope": "param",
+                    "field": p.key, "count": hist_param.get(p.key, 0)}) }}
                 <form method="post" action="/hosts/{{ host.id }}/params/delete" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="key" value="{{ p.key }}">
@@ -461,6 +550,15 @@
         <summary>Show where each value comes from</summary>
         <div class="disclosure-body">Precedence: global, then ancestor groups root-to-leaf, then host overrides. Equal-depth ties go to the alphabetically last group.</div>
     </details>
+</div>
+
+{# Own card: a second disclosure inside a table card would also trip the
+   :has() rule that reveals that table's advanced columns.
+
+   This pane is the only place a change outlives its row: unsetting a parameter
+   removes the row its control hung off, so the feed is where that shows up. #}
+<div class="section card">
+    {{ history_pane(host.id, pane_changes, scope=pane_scope, component_kind=pane_kind) }}
 </div>
 {% endif %}
 {% endblock %}

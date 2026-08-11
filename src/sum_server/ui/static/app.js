@@ -227,9 +227,76 @@
         });
     }
 
+    /* --- history popovers ------------------------------------------------ */
+
+    /* HTMX fetches the timeline into the adjacent .hist-pop; this only opens,
+       closes, keeps one open at a time, and places it. Delegated, so controls
+       swapped in by HTMX work without re-binding. */
+    function closeHistory(except) {
+        document.querySelectorAll(".hist-pop").forEach(function (pop) {
+            if (pop === except) return;
+            pop.hidden = true;
+            var btn = pop.parentElement && pop.parentElement.querySelector("[data-hist-toggle]");
+            if (btn) btn.setAttribute("aria-expanded", "false");
+        });
+    }
+
+    /* The popover is `position: fixed` so a table's scroll container cannot
+       clip it, which means its coordinates are ours to supply. Right-align to
+       the button, flip above when there is no room below, and keep it inside
+       the viewport on both axes. */
+    function placeHistory(btn, pop) {
+        pop.style.top = "0px";
+        pop.style.left = "0px";
+        var b = btn.getBoundingClientRect();
+        var p = pop.getBoundingClientRect();
+        var margin = 8;
+        var below = window.innerHeight - b.bottom;
+        var top = below >= p.height + margin ? b.bottom + 6 : b.top - p.height - 6;
+        var left = b.right - p.width;
+        pop.style.top = Math.max(margin, Math.min(top, window.innerHeight - p.height - margin)) + "px";
+        pop.style.left = Math.max(margin, Math.min(left, window.innerWidth - p.width - margin)) + "px";
+    }
+
+    function initHistory() {
+        document.addEventListener("click", function (ev) {
+            var btn = ev.target.closest("[data-hist-toggle]");
+            if (!btn) {
+                if (!ev.target.closest(".hist-pop")) closeHistory(null);
+                return;
+            }
+            var pop = btn.parentElement.querySelector(".hist-pop");
+            if (!pop) return;
+            var opening = pop.hidden;
+            closeHistory(pop);
+            pop.hidden = !opening;
+            btn.setAttribute("aria-expanded", opening ? "true" : "false");
+            if (opening) placeHistory(btn, pop);
+        });
+
+        /* The body arrives after the click, so the size we measured was the
+           empty box; place it again once HTMX has swapped the timeline in. */
+        document.body.addEventListener("htmx:afterSwap", function (ev) {
+            var pop = ev.target;
+            if (!pop.classList || !pop.classList.contains("hist-pop") || pop.hidden) return;
+            var btn = pop.parentElement.querySelector("[data-hist-toggle]");
+            if (btn) placeHistory(btn, pop);
+        });
+
+        document.addEventListener("keydown", function (ev) {
+            if (ev.key === "Escape") closeHistory(null);
+        });
+
+        /* Fixed coordinates go stale the moment anything scrolls. Capture, so
+           a table scrolling under the popover counts too. */
+        document.addEventListener("scroll", function () { closeHistory(null); }, true);
+        window.addEventListener("resize", function () { closeHistory(null); });
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
         var bar = document.querySelector("[data-searchbar]");
         if (bar) initSearchBar(bar);
         initCopyButtons();
+        initHistory();
     });
 })();
