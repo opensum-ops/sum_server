@@ -120,3 +120,4 @@ jobs:
           TESTCONTAINERS_RYUK_DISABLED: "true"
         run: uv run pytest -q
 # ci probe base
+# ci probe stacked
