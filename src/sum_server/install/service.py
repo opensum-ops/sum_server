@@ -78,6 +78,33 @@ def render_script(*, server_url: str, version: str) -> str:
     )
 
 
+def render_uninstall_script(*, server_url: str) -> str:
+    """Render uninstall.sh for this server.
+
+    Same path constants as the installer, which is the point: the two scripts
+    are the two halves of one contract about what lives where on a host.
+    Needs no version or arch, because removing files does not depend on which
+    build put them there.
+    """
+    return _env.get_template("uninstall.sh.j2").render(
+        server_url=server_url.rstrip("/"),
+        bin_path=BIN_PATH,
+        env_file=ENV_FILE,
+        state_dir=STATE_DIR,
+        unit_path=UNIT_PATH,
+        service_name=SERVICE_NAME,
+    )
+
+
+def uninstall_command(*, server_url: str) -> str:
+    """The copy-pasteable manual removal command.
+
+    ``-f`` for the same reason as the installer: without it an HTTP error body
+    would be piped into sh.
+    """
+    return f"curl -fsSL {server_url.rstrip('/')}/uninstall.sh | sudo sh"
+
+
 def install_command(*, server_url: str, token: str | None = None) -> str:
     """The copy-pasteable command shown in the enrollment wizard.
 

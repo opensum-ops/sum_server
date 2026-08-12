@@ -253,6 +253,61 @@ async def decommission_host(
         await svc.decommission_host(session, host_id=host_id)
 
 
+@router.post("/{host_id}/agent-removal", status_code=status.HTTP_204_NO_CONTENT)
+async def request_agent_removal(
+    host_id: uuid.UUID,
+    admin: AdminActor,
+    session: SessionDep,
+) -> None:
+    """Ask the agent to uninstall itself on its next heartbeat.
+
+    The server cannot reach into the host (hard constraint #1), so this only
+    records intent. See [[Agent Removal]].
+    """
+    from sum_server.hosts import removal
+
+    async with session.begin():
+        host = await svc.get_host(session, host_id)
+        if host is None:
+            raise NotFoundError("host not found")
+        await removal.request(session, host=host, actor=admin)
+
+
+@router.delete("/{host_id}/agent-removal", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_agent_removal(
+    host_id: uuid.UUID,
+    _admin: AdminActor,
+    session: SessionDep,
+) -> None:
+    from sum_server.hosts import removal
+
+    async with session.begin():
+        host = await svc.get_host(session, host_id)
+        if host is None:
+            raise NotFoundError("host not found")
+        await removal.cancel(session, host=host, reason="cancelled")
+
+
+@router.delete("/{host_id}/record", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_host_record(
+    host_id: uuid.UUID,
+    admin: AdminActor,
+    session: SessionDep,
+) -> None:
+    """Hard-delete a host that was never enrolled.
+
+    Distinct from ``DELETE /hosts/{id}``, which decommissions a real machine.
+    Refuses once an agent token has ever existed for the host.
+    """
+    from sum_server.hosts import removal
+
+    async with session.begin():
+        host = await svc.get_host(session, host_id)
+        if host is None:
+            raise NotFoundError("host not found")
+        await removal.delete_host_record(session, host=host, actor=admin)
+
+
 @router.post("/{host_id}/owners", status_code=status.HTTP_204_NO_CONTENT)
 async def add_owner(
     host_id: uuid.UUID,

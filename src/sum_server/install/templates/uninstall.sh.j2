@@ -1,0 +1,91 @@
+#!/bin/sh
+# OpenSUM agent uninstaller, served by {{ server_url }}
+#
+# Removes the sum-agent service, binary, config, and state from this host.
+#
+# The button on the host page is the normal way to do this: it tells the agent
+# to remove itself and cleans up the server side to match. This script is for
+# the two cases that cannot reach: an agent too old to understand the removal
+# directive, and a host that will never call home again.
+#
+# It only touches this machine. The server still believes the host is enrolled
+# until you remove the agent from its host page.
+set -eu
+
+SERVER_URL="{{ server_url }}"
+BIN_PATH="{{ bin_path }}"
+ENV_FILE="{{ env_file }}"
+STATE_DIR="{{ state_dir }}"
+UNIT_PATH="{{ unit_path }}"
+SERVICE="{{ service_name }}"
+
+KEEP_STATE=0
+
+die() { echo "sum-agent uninstall: $*" >&2; exit 1; }
+
+usage() {
+    cat <<USAGE
+Removes the OpenSUM agent from this host.
+
+  --keep-state   leave ${STATE_DIR} in place (keeps enrollment credentials, so
+                 restarting a reinstalled agent re-uses the same identity)
+  --help         show this message
+
+The server is not notified. Remove the agent from the host page in ${SERVER_URL}
+so its record stops expecting an agent.
+USAGE
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --keep-state) KEEP_STATE=1 ;;
+        --help|-h) usage; exit 0 ;;
+        *) die "unknown option: $1 (try --help)" ;;
+    esac
+    shift
+done
+
+[ "$(id -u)" = "0" ] || die "must run as root"
+
+# Stop first, so nothing is holding the binary or writing state while we remove
+# it. `|| true` throughout: every step here is "make sure this is gone", and a
+# piece that was already missing is success, not failure. That is what makes
+# the script safe to re-run after a partial removal.
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl stop "$SERVICE" 2>/dev/null || true
+    systemctl disable "$SERVICE" 2>/dev/null || true
+fi
+
+if [ -f "$UNIT_PATH" ]; then
+    rm -f "$UNIT_PATH"
+    echo "Removed $UNIT_PATH"
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload || true
+        systemctl reset-failed "$SERVICE" 2>/dev/null || true
+    fi
+fi
+
+if [ -f "$BIN_PATH" ]; then
+    rm -f "$BIN_PATH"
+    echo "Removed $BIN_PATH"
+fi
+
+if [ -f "$ENV_FILE" ]; then
+    rm -f "$ENV_FILE"
+    echo "Removed $ENV_FILE"
+    # Only if we emptied it; the directory may predate us or hold other files.
+    rmdir "$(dirname "$ENV_FILE")" 2>/dev/null || true
+fi
+
+if [ "$KEEP_STATE" = "1" ]; then
+    echo "Kept $STATE_DIR"
+elif [ -d "$STATE_DIR" ]; then
+    rm -rf "$STATE_DIR"
+    echo "Removed $STATE_DIR"
+fi
+
+echo
+echo "sum-agent removed from this host."
+echo "The server still has a record for it. To finish, open the host in"
+echo "  ${SERVER_URL}/hosts"
+echo "and use Remove agent, which clears what the agent reported."

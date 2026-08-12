@@ -65,7 +65,18 @@
         </div>
         {% if is_admin %}
         <div class="card-body">
-            {% if target_agent_version %}
+            {% if agent_removal_requested_at %}
+            {# Removal supersedes an update: request() drops any pending target,
+               so the two controls are never offered at once. #}
+            <p class="muted" style="margin-bottom: 8px;">
+                Removal requested {{ agent_removal_requested_at.strftime("%Y-%m-%d %H:%M") }}.
+                The agent uninstalls itself on its next heartbeat.
+            </p>
+            <form method="post" action="/hosts/{{ host.id }}/agent-removal/cancel" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-ghost btn-sm">Cancel removal</button>
+            </form>
+            {% elif target_agent_version %}
             <form method="post" action="/hosts/{{ host.id }}/agent-update/cancel" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-ghost btn-sm">Cancel pending update</button>
@@ -79,6 +90,29 @@
             </form>
             {% else %}
             <span class="muted">Up to date.</span>
+            {% endif %}
+        </div>
+
+        {# Two different outcomes, so two different labels. One control reading
+           "remove" while sometimes destroying the host record would hide a
+           destructive action behind a benign word. #}
+        <div class="card-body danger-zone">
+            {% if ever_enrolled %}
+            {% if not agent_removal_requested_at %}
+            <form method="post" action="/hosts/{{ host.id }}/agent-removal" class="inline-form"
+                  onsubmit="return confirm('Remove the agent from {{ host.hostname }}?\n\nThe agent uninstalls itself on its next heartbeat. Facts and hardware collected by it are deleted. The host record, its owners, groups, and parameters are kept.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-danger btn-sm">Remove agent</button>
+            </form>
+            <span class="muted">Uninstalls the agent and clears what it reported. Does not decommission the host.</span>
+            {% endif %}
+            {% else %}
+            <form method="post" action="/hosts/{{ host.id }}/delete" class="inline-form"
+                  onsubmit="return confirm('Delete {{ host.hostname }}?\n\nThis host was never enrolled, so nothing is installed anywhere. The record and everything attached to it are deleted permanently.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-danger btn-sm">Delete host</button>
+            </form>
+            <span class="muted">Never enrolled, so there is no agent to remove. Deletes the record.</span>
             {% endif %}
         </div>
         {% endif %}

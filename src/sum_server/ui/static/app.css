@@ -1011,6 +1011,21 @@ td .hist {
     font-size: 12px;
 }
 
+/* Destructive controls sit below a rule at the foot of their card, so the
+   irreversible action is visually separated from the routine ones above it
+   rather than sitting in the same row as "Update agent". */
+.danger-zone {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+    border-top: 1px solid var(--border);
+}
+
+.danger-zone .muted {
+    font-size: 12px;
+}
+
 .btn-block {
     width: 100%;
 }

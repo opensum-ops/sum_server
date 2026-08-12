@@ -552,6 +552,14 @@ async def host_detail_page(
     agent_cache = await get_release_cache(session, COMPONENT_AGENT)
     latest_agent = agent_cache.latest_version if agent_cache else None
 
+    # Decides which destructive control the page offers. Keyed on whether a
+    # token ever existed, not on presence: presence returns to `pending` after a
+    # successful removal, so keying off it would offer "delete host" for a real
+    # machine that just had its agent taken off.
+    from sum_server.hosts.removal import was_ever_enrolled
+
+    ever_enrolled = await was_ever_enrolled(session, host_id=host_id)
+
     # Four grouped queries feed every history control on the page, rather than
     # one count per rendered row. `subject_counts` covers components and groups
     # alike, both being keyed by the id of the thing the row is about.
@@ -590,6 +598,8 @@ async def host_detail_page(
             "latest_agent": latest_agent,
             "agent_update_available": is_newer(latest_agent, agent_current),
             "target_agent_version": host.target_agent_version,
+            "ever_enrolled": ever_enrolled,
+            "agent_removal_requested_at": host.agent_removal_requested_at,
             "hist_host": hist_host,
             "hist_fact": hist_fact,
             "hist_param": hist_param,
@@ -649,6 +659,76 @@ async def host_agent_update_cancel(
         if host.target_agent_version:
             await agent_update.clear_target(session, host=host, reason="cancelled")
     return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@router.post("/hosts/{host_id}/agent-removal")
+async def host_agent_removal(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    """Ask the agent to uninstall itself on its next heartbeat."""
+    from sum_server.hosts import removal
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        host = await hosts_svc.get_host(session, host_id)
+        if host is None:
+            raise NotFoundError("host not found")
+        await removal.request(session, host=host, actor=user)
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@router.post("/hosts/{host_id}/agent-removal/cancel")
+async def host_agent_removal_cancel(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    from sum_server.hosts import removal
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        host = await hosts_svc.get_host(session, host_id)
+        if host is None:
+            raise NotFoundError("host not found")
+        await removal.cancel(session, host=host, reason="cancelled")
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@router.post("/hosts/{host_id}/delete")
+async def host_delete(
+    request: Request,
+    session: SessionDep,
+    user: UiUser,
+    host_id: uuid.UUID,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    """Hard-delete a host that was never enrolled.
+
+    Refuses once an agent token has ever existed, so this can never be the
+    button that quietly destroys a real machine's record.
+    """
+    from sum_server.hosts import removal
+
+    check_csrf(request, csrf_token)
+    assert user.id is not None
+    await _require_admin_ui(session, user.id)
+    async with session.begin():
+        host = await hosts_svc.get_host(session, host_id)
+        if host is None:
+            raise NotFoundError("host not found")
+        await removal.delete_host_record(session, host=host, actor=user)
+    # The host page it came from no longer exists.
+    return RedirectResponse("/hosts", status_code=303)
 
 
 @router.get("/hosts/{host_id}/history", response_class=HTMLResponse)

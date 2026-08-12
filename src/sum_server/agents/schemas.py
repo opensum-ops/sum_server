@@ -84,7 +84,10 @@ class InventoryIngestResponse(BaseModel):
 class HeartbeatRequest(BaseModel):
     state: Literal["running", "stopping"] = "running"
     # Why the agent is stopping; ignored (and meaningless) while running.
-    detail: Literal["rebooting", "powered_off", "agent_stop"] | None = None
+    # `agent_removed` is the goodbye an agent sends as its last act before
+    # uninstalling itself, and is the server's only completion signal: once
+    # gone, it can never report anything again.
+    detail: Literal["rebooting", "powered_off", "agent_stop", "agent_removed"] | None = None
     boot_id: str | None = Field(default=None, max_length=64)
     # Additive (N-1 agents omit it). Lets the server confirm a completed
     # self-update without waiting for the next inventory.
@@ -98,9 +101,19 @@ class AgentUpdateDirective(BaseModel):
     signature: str  # base64 Ed25519 over {host_id, target_version, sha256}
 
 
+class AgentRemoveDirective(BaseModel):
+    action: str
+    requested_at: str
+    signature: str  # base64 Ed25519 over {host_id, action, requested_at}
+
+
 class HeartbeatResponse(BaseModel):
     presence: str
     server_time: dt.datetime
     # Additive: present only when the host has a pending agent update. N-1
     # agents ignore the field entirely.
     agent_update: AgentUpdateDirective | None = None
+    # Additive, same contract. An agent too old to know this field keeps
+    # running, so removal only works from the version that ships it onward;
+    # `uninstall.sh` is the answer for anything older.
+    agent_remove: AgentRemoveDirective | None = None
