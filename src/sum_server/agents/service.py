@@ -227,6 +227,19 @@ async def record_heartbeat(
         if boot_id:
             host.boot_id = boot_id
         host.reported_presence = None
+    elif detail == "agent_removed":
+        # The agent's last act before uninstalling itself, and the only
+        # completion signal there will ever be. Honoured whether or not the
+        # server asked: the agent authenticated as this host and can only speak
+        # for itself, so trusting it costs nothing and makes a manual
+        # `uninstall.sh` on the box converge the server too.
+        from sum_server.hosts import removal
+
+        await removal.complete(session, host=host)
+        # Deliberately no `last_heartbeat_at`: `complete` cleared it so presence
+        # derives back to `pending`, and stamping it here would leave the host
+        # reading `stopped` with no agent to explain it.
+        return host
     else:  # stopping
         host.reported_presence = _GOODBYE_DETAIL_TO_PRESENCE.get(detail, "stopped")
         await write_audit(

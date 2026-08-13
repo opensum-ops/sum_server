@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 
 from sum_server.agents import service as svc
 from sum_server.agents.schemas import (
+    AgentRemoveDirective,
     EnrollmentCreate,
     EnrollmentCreateResponse,
     EnrollmentResponse,
@@ -122,6 +123,7 @@ async def heartbeat(
     from sum_server.hosts.facts import get_fact_value
     from sum_server.settings import get_settings
     from sum_server.updates.agent_update import build_directive_for_host
+    from sum_server.updates.directive import build_removal_directive
 
     assert agent.id is not None
     reported = agent_version_from_request(request, payload.agent_version)
@@ -135,7 +137,18 @@ async def heartbeat(
         )
         presence = host.presence
         directive = None
-        if payload.state == "running" and host.target_agent_version:
+        removal_directive = None
+        # Removal wins: an agent about to uninstall itself has no use for a new
+        # binary, and `removal.request` already drops any pending update, so the
+        # two are never both set.
+        if payload.state == "running" and host.agent_removal_requested_at is not None:
+            removal_directive = AgentRemoveDirective(
+                **build_removal_directive(
+                    host_id=host.id,
+                    requested_at=host.agent_removal_requested_at.isoformat(),
+                )
+            )
+        elif payload.state == "running" and host.target_agent_version:
             arch = await get_fact_value(session, host_id=agent.id, key="arch")
             base_url = get_settings().external_url or str(request.base_url)
             directive = await build_directive_for_host(
@@ -149,6 +162,7 @@ async def heartbeat(
         presence=presence,
         server_time=dt.datetime.now(tz=dt.UTC),
         agent_update=directive,
+        agent_remove=removal_directive,
     )
 
 

@@ -58,6 +58,12 @@ class Host(Base, IdMixin, TimestampMixin):
     # reports it reached it. See updates/directive.py.
     target_agent_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
+    # Set by "Remove agent"; the agent collects the signed directive on its next
+    # heartbeat and uninstalls itself. Cleared on completion or cancel. A
+    # timestamp rather than a flag so the UI can say how long it has been
+    # waiting on a host that is not checking in. See [[Agent Removal]].
+    agent_removal_requested_at: Mapped[dt.datetime | None] = mapped_column(nullable=True)
+
     agent_tokens: Mapped[list[AgentToken]] = relationship(
         back_populates="host", cascade="all, delete-orphan", lazy="select"
     )

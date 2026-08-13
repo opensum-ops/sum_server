@@ -50,6 +50,21 @@ async def install_script(request: Request, session: SessionDep) -> Response:
     )
 
 
+@router.get("/uninstall.sh")
+async def uninstall_script(request: Request) -> Response:
+    """Manual agent removal, for the cases the button cannot reach.
+
+    Takes no session and cannot fail: it only removes files whose paths are
+    compile-time constants, so unlike the installer there is no release to
+    resolve and nothing to stage. That also means an agent whose server is
+    unreachable can still be removed with a script fetched from anywhere.
+    """
+    return PlainTextResponse(
+        svc.render_uninstall_script(server_url=_server_url(request)),
+        media_type="text/x-shellscript",
+    )
+
+
 # Declared before the binary route on purpose: `{arch}` would otherwise match
 # "linux-amd64.sha256" and serve 20MB where a checksum was asked for.
 @router.get("/install/sum-agent/{version}/{arch}.sha256")

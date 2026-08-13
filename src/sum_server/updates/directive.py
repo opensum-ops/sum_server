@@ -34,3 +34,32 @@ def build_directive(
         "binary_url": binary_url,
         "signature": base64.b64encode(sig).decode(),
     }
+
+
+# --- Removal ----------------------------------------------------------------
+#
+# Signed for the same reason the update directive is, only more so: an unsigned
+# "remove yourself" is a fleet-wide kill switch for anyone who can reach the
+# channel, and later for a compromised sum_satellite. `action` is in the signed
+# payload so an update signature can never be replayed as a removal, and
+# `requested_at` binds it to one request rather than being replayable forever.
+
+REMOVE_ACTION = "remove_agent"
+
+
+def removal_signing_payload(host_id: uuid.UUID, requested_at: str) -> dict[str, str]:
+    return {
+        "host_id": str(host_id),
+        "action": REMOVE_ACTION,
+        "requested_at": requested_at,
+    }
+
+
+def build_removal_directive(*, host_id: uuid.UUID, requested_at: str) -> dict[str, str]:
+    """Return the ``agent_remove`` block for a HeartbeatResponse."""
+    sig = signing.sign(removal_signing_payload(host_id, requested_at))
+    return {
+        "action": REMOVE_ACTION,
+        "requested_at": requested_at,
+        "signature": base64.b64encode(sig).decode(),
+    }
