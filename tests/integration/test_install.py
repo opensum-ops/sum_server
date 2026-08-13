@@ -93,20 +93,32 @@ async def test_install_script_targets_this_server(client: AsyncClient, db_sessio
 
 
 def test_rendered_script_points_the_agent_at_the_system_ca_bundle() -> None:
-    """httpx trusts certifi, not the OS store, so a private CA needs SSL_CERT_FILE.
-
-    Without this the agent fails TLS on its first enroll even though the curl
-    that fetched it succeeded, because curl does use the OS store. See the
-    2026-07-22 deployment notes.
-    """
+    """The agent verifies against the host's CA store from 0.6.1 onward, but an
+    older binary still trusts certifi, so the pin stays as belt and braces."""
     script = install_svc.render_script(server_url="https://s.example.com", version=VERSION)
 
-    assert 'echo "SSL_CERT_FILE=${bundle}" >> "$ENV_FILE"' in script
+    assert 'echo "SSL_CERT_FILE=${CA_BUNDLE}" >> "$ENV_FILE"' in script
     assert "/etc/ssl/certs/ca-certificates.crt" in script  # debian, ubuntu
     assert "/etc/pki/tls/certs/ca-bundle.crt" in script  # rhel, fedora
     # Appended, not written into the heredoc, so the probe cannot clobber the
     # two settings the unit depends on.
     assert script.index("SUM_AGENT_STATE_DIR=${STATE_DIR}") < script.index("SSL_CERT_FILE")
+
+
+def test_enrolment_inherits_the_ca_bundle() -> None:
+    """The bug this fixes: enrolment ran with the env file written but never
+    read.
+
+    Only the systemd unit loads `agent.env`; the enrol below it is a plain
+    command in this shell. So the bundle has to be *exported*, or enrolment
+    fails TLS on precisely the host whose store already trusts the server,
+    which is what happened on the first private-CA deployment.
+    """
+    script = install_svc.render_script(server_url="https://s.example.com", version=VERSION)
+
+    assert "export SSL_CERT_FILE" in script
+    # Exported before the enrol runs, or the export is pointless.
+    assert script.index("export SSL_CERT_FILE") < script.index("enroll --token")
 
 
 async def test_install_script_needs_no_auth(client: AsyncClient, db_session: Any) -> None:

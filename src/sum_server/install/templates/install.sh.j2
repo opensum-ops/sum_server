@@ -96,16 +96,27 @@ SUM_AGENT_SERVER_URL=${SERVER_URL}
 SUM_AGENT_STATE_DIR=${STATE_DIR}
 ENVEOF
 
-# The agent talks to the server through httpx, which trusts certifi rather than
-# the OS store, so a server behind a private CA fails verification even though
-# the curl above succeeded. That curl is the proof: it uses the OS store, so if
-# we got this far the system bundle already trusts this server.
-for bundle in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt; do
+# The agent verifies against this host's CA store, so a server behind a private
+# CA works without help. This pin is belt and braces, and it matters in one real
+# case: an agent older than 0.6.1 still verifies against certifi and would fail
+# the enrolment below on exactly the host where the curl above just succeeded.
+#
+# It is exported as well as written to the env file, because the enrolment runs
+# here and now as a plain command; it does not read the env file, which only the
+# systemd unit loads. That gap is what broke enrolment on a private-CA host.
+CA_BUNDLE=""
+for bundle in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt \
+              /etc/ssl/ca-bundle.pem /etc/pki/tls/cacert.pem /etc/ssl/cert.pem; do
     if [ -f "$bundle" ]; then
-        echo "SSL_CERT_FILE=${bundle}" >> "$ENV_FILE"
+        CA_BUNDLE="$bundle"
         break
     fi
 done
+if [ -n "$CA_BUNDLE" ]; then
+    echo "SSL_CERT_FILE=${CA_BUNDLE}" >> "$ENV_FILE"
+    SSL_CERT_FILE="$CA_BUNDLE"
+    export SSL_CERT_FILE
+fi
 
 chmod 0600 "$ENV_FILE"
 
