@@ -364,6 +364,15 @@ async def _install_context(
         "state_dir": install_svc.STATE_DIR,
         "unit_path": install_svc.UNIT_PATH,
         "service_name": install_svc.SERVICE_NAME,
+        # The wizard is where the operator finds out that an abandoned
+        # enrollment does not sit on the hosts page forever. Saying it here,
+        # while the token is in front of them, is the only point at which the
+        # sweep is not a surprise. None when the sweep is switched off.
+        "cleanup_days": (
+            round(get_settings().stale_host_grace_seconds / 86400, 1)
+            if get_settings().stale_host_cleanup_enabled
+            else None
+        ),
     }
     try:
         ctx["agent_version"] = await install_svc.installable_version(session)

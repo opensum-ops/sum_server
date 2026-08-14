@@ -103,6 +103,30 @@ async def _update_check_loop(stop: asyncio.Event, interval_seconds: int) -> None
             await asyncio.wait_for(stop.wait(), timeout=interval_seconds)
 
 
+async def _stale_host_cleanup_loop(
+    stop: asyncio.Event, interval_seconds: int, grace_seconds: int
+) -> None:
+    """Periodically delete hosts whose enrollment expired unused.
+
+    A sweep rather than a read-time filter, which is the opposite of how
+    presence works, and for a reason: presence only decides what a page shows,
+    while this deletes rows. Hiding a host at read time would leave the record
+    accumulating forever behind the filter, and the operator with no way to see
+    what the server was quietly ignoring.
+    """
+    from sum_server.hosts import cleanup
+
+    sm = async_sessionmaker(get_engine(), expire_on_commit=False)
+    while not stop.is_set():
+        try:
+            async with sm() as session, session.begin():
+                await cleanup.sweep(session, grace_seconds=grace_seconds)
+        except Exception:
+            log.exception("stale_host_cleanup_failed")
+        with suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=interval_seconds)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
@@ -118,6 +142,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if settings.update_check_enabled:
         tasks.append(
             asyncio.create_task(_update_check_loop(stop, settings.update_check_interval_seconds))
+        )
+    if settings.stale_host_cleanup_enabled:
+        tasks.append(
+            asyncio.create_task(
+                _stale_host_cleanup_loop(
+                    stop,
+                    settings.stale_host_cleanup_interval_seconds,
+                    settings.stale_host_grace_seconds,
+                )
+            )
         )
     try:
         yield

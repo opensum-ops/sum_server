@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     presence_online_window_seconds: int = 90
     presence_reboot_grace_seconds: int = 900
 
+    # --- Expired-enrollment cleanup (see hosts/cleanup.py) ---
+    # Deletes host records whose enrollment was never used, long after the
+    # token stopped working. The grace period is deliberately far longer than
+    # `enrollment_token_ttl_seconds`: an expired token means the token no
+    # longer works, not that the operator has given up on the machine.
+    stale_host_cleanup_enabled: bool = True
+    stale_host_cleanup_interval_seconds: int = Field(default=3600, ge=60)
+    stale_host_grace_seconds: int = Field(default=7 * 24 * 3600, ge=3600)
+
     # Public base URL shown in enrollment instructions (falls back to the
     # request's base URL when empty), e.g. "https://sum.example.com".
     external_url: str = ""
