@@ -38,6 +38,10 @@ def _testcontainer_postgres() -> Iterator[str]:
         # would race per-test state and populate release_cache. Update tests
         # mock fetch_latest_release and drive /updates/check explicitly.
         os.environ["SUM_SERVER_UPDATE_CHECK_ENABLED"] = "false"
+        # Same reasoning for the stale-host sweep: it deletes rows, and a
+        # background loop doing that on its own schedule would race whatever a
+        # test is asserting. The cleanup tests call `sweep` directly.
+        os.environ["SUM_SERVER_STALE_HOST_CLEANUP_ENABLED"] = "false"
         yield url
 
 
