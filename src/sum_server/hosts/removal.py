@@ -161,7 +161,9 @@ async def complete(session: AsyncSession, *, host: Host) -> dict[str, int]:
     return counts
 
 
-async def delete_host_record(session: AsyncSession, *, host: Host, actor: Actor) -> None:
+async def delete_host_record(
+    session: AsyncSession, *, host: Host, actor: Actor, reason: str = "never_enrolled"
+) -> None:
     """Hard-delete a host that never had an agent.
 
     Only reachable for a host that was never enrolled, where the record is a
@@ -170,6 +172,11 @@ async def delete_host_record(session: AsyncSession, *, host: Host, actor: Actor)
     components, memberships, parameters, ownership, and change history with it.
     The audit trail survives, being keyed by a plain uuid rather than a foreign
     key.
+
+    ``reason`` records *why* in the audit payload: an operator pressing delete
+    and the automatic expired-enrollment sweep (``hosts/cleanup.py``) reach the
+    same end state, and the audit log is the only place that difference stays
+    visible afterwards.
     """
     if await was_ever_enrolled(session, host_id=host.id):
         raise ConflictError("host has been enrolled; remove the agent instead")
@@ -180,7 +187,7 @@ async def delete_host_record(session: AsyncSession, *, host: Host, actor: Actor)
         action="host.deleted",
         target_kind="host",
         target_id=host.id,
-        payload={"hostname": host.hostname, "reason": "never_enrolled"},
+        payload={"hostname": host.hostname, "reason": reason},
         actor_kind=actor.kind,
         actor_id=actor.id,
     )
