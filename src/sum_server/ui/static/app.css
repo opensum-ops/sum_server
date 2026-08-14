@@ -398,11 +398,17 @@ code, .mono {
     flex-direction: column;
 }
 
+/* Label left, value right, history control tight against the value.
+
+   Not `justify-content: space-between`: with three children that spreads them
+   evenly and parks the value in the middle of the row, so the eye has to hunt
+   for it and the control it belongs to ends up an inch away. The value is
+   pushed right on its own (`margin-left: auto`) instead, which leaves the
+   control immediately beside it and reads the same on a two-child row. */
 .setting-row {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
-    gap: 20px;
+    gap: 10px;
     padding: 9px 16px;
     border-radius: var(--radius-sm);
 }
@@ -418,8 +424,12 @@ code, .mono {
 }
 
 .setting-value {
+    margin-left: auto;
     text-align: right;
     overflow-wrap: anywhere;
+    /* Keeps a long value from pushing the history control off the row: it
+       wraps at the row's width instead. */
+    min-width: 0;
 }
 
 .setting-value.mono {
@@ -503,6 +513,12 @@ code, .mono {
     position: relative;
     flex-shrink: 0;
     margin-left: 8px;
+}
+
+/* The row already spaces its children; the extra margin would push the
+   control away from the value it belongs to. */
+.setting-row .hist {
+    margin-left: 0;
 }
 
 .hist-btn {
