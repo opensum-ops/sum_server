@@ -23,7 +23,9 @@
                         </span>
                     </td>
                     <td class="muted">{{ row.group.description or "—" }}</td>
-                    <td>{{ row.members if row.group.parent_id is not none else "all hosts" }}</td>
+                    {# Counts the whole subtree: a host in a subgroup is in this group too.
+                       The root additionally covers hosts in no group at all. #}
+                    <td>{{ row.members }}{% if row.group.parent_id is none %} <span class="muted">(all hosts)</span>{% endif %}</td>
                     <td>{{ row.params }}</td>
                 </tr>
                 {% else %}

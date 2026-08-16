@@ -91,24 +91,36 @@
         {% else %}
         <div class="table-wrap">
             <table class="table">
-                <thead><tr><th>Host</th><th>State</th><th></th></tr></thead>
+                <thead><tr><th>Host</th><th>State</th><th>Member via</th><th></th></tr></thead>
                 <tbody>
-                    {% for h in members %}
+                    {% for m in members %}
                     <tr>
-                        <td><a href="/hosts/{{ h.id }}">{{ h.hostname }}</a></td>
-                        <td><span class="pill pill-{{ h.presence }}">{{ h.presence | replace("_", " ") }}</span></td>
+                        <td><a href="/hosts/{{ m.host.id }}">{{ m.host.hostname }}</a></td>
+                        <td><span class="pill pill-{{ m.host.presence }}">{{ m.host.presence | replace("_", " ") }}</span></td>
+                        {# A host is here directly, or through a subgroup it joined. Naming
+                           the subgroup is the difference between "why is this listed?" and
+                           an answer. #}
                         <td>
-                            {% if is_admin %}
+                            {% if m.direct %}<span class="muted">this group</span>
+                            {% else %}
+                            {% for g in m.sources %}<a href="/groups/{{ g.id }}">{{ g.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {# Removing a host from a group it is not in would be a no-op
+                               dressed up as an action, so the control is only offered on
+                               direct members. #}
+                            {% if is_admin and m.direct %}
                             <form method="post" action="/groups/{{ group.id }}/members/remove" class="inline-form">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <input type="hidden" name="host_id" value="{{ h.id }}">
+                                <input type="hidden" name="host_id" value="{{ m.host.id }}">
                                 <button type="submit" class="btn btn-danger btn-sm">Remove</button>
                             </form>
                             {% endif %}
                         </td>
                     </tr>
                     {% else %}
-                    <tr class="empty-row"><td colspan="3">No members yet.</td></tr>
+                    <tr class="empty-row"><td colspan="4">No members yet.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

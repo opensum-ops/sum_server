@@ -14,7 +14,12 @@ import uuid
 
 import pytest
 
-from sum_server.groups.resolution import GroupNode, ancestor_chain, resolve_parameters
+from sum_server.groups.resolution import (
+    GroupNode,
+    ancestor_chain,
+    resolve_parameters,
+    subtree_ids,
+)
 
 GLOBAL = uuid.uuid4()
 DC_EAST = uuid.uuid4()
@@ -114,3 +119,36 @@ def test_disjoint_keys_all_present() -> None:
 def test_non_member_groups_do_not_contribute() -> None:
     out = _resolve({WEB: {"role": "web"}}, members=[LINUX])
     assert "role" not in out
+
+
+# --- Subtree (effective membership) -----------------------------------------
+
+
+def test_subtree_of_the_root_is_every_group() -> None:
+    assert subtree_ids(GLOBAL, NODES) == {GLOBAL, DC_EAST, WEB, LINUX}
+
+
+def test_subtree_includes_grandchildren() -> None:
+    """The reported bug in miniature: `kube` has to see through `kubeworkers`
+    to the hosts under it, not just its own direct children."""
+    assert subtree_ids(DC_EAST, NODES) == {DC_EAST, WEB}
+
+
+def test_a_leaf_is_its_own_subtree() -> None:
+    assert subtree_ids(WEB, NODES) == {WEB}
+
+
+def test_siblings_stay_out_of_each_other() -> None:
+    assert LINUX not in subtree_ids(DC_EAST, NODES)
+    assert DC_EAST not in subtree_ids(LINUX, NODES)
+
+
+def test_a_cycle_terminates_rather_than_hanging() -> None:
+    """Unreachable through the write paths, which refuse to reparent a group
+    under its own descendant. A corrupt tree must not hang a page render."""
+    a, b = uuid.uuid4(), uuid.uuid4()
+    cyclic = {
+        a: GroupNode(id=a, name="a", parent_id=b),
+        b: GroupNode(id=b, name="b", parent_id=a),
+    }
+    assert subtree_ids(a, cyclic) == {a, b}

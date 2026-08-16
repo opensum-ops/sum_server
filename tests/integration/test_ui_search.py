@@ -157,3 +157,48 @@ async def test_rows_partial_requires_login(client: AsyncClient) -> None:
     r = await client.get("/hosts/rows", follow_redirects=False)
     assert r.status_code == 303
     assert r.headers["location"].startswith("/login")
+
+
+async def test_group_filter_matches_the_whole_subtree(
+    client: AsyncClient, admin_token: str
+) -> None:
+    """`group:kube` has to mean what the groups page now counts. A filter that
+    matched only direct members would disagree with the number beside it."""
+    kube = await client.post("/api/v1/groups", headers=auth_h(admin_token), json={"name": "kube"})
+    workers = await client.post(
+        "/api/v1/groups",
+        headers=auth_h(admin_token),
+        json={"name": "kubeworkers", "parent_id": kube.json()["id"]},
+    )
+    inside = await _host_with_facts(client, admin_token, "w1", "w1.example.com", {})
+    await _host_with_facts(client, admin_token, "solo", "solo.example.com", {})
+    r = await client.post(
+        f"/api/v1/groups/{workers.json()['id']}/members",
+        headers=auth_h(admin_token),
+        json={"host_id": inside},
+    )
+    assert r.status_code == 204
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+
+    r = await client.get("/hosts/rows", params={"group": "kube"})
+    assert "w1.example.com" in r.text
+    assert "solo.example.com" not in r.text
+
+    # The group actually joined still matches, unchanged.
+    r = await client.get("/hosts/rows", params={"group": "kubeworkers"})
+    assert "w1.example.com" in r.text
+    assert "solo.example.com" not in r.text
+
+
+async def test_group_filter_on_the_root_returns_every_host(
+    client: AsyncClient, admin_token: str
+) -> None:
+    """Including hosts in no group at all: membership in `global` is implicit
+    and never written to `host_groups`, so a subtree query would drop them."""
+    await _host_with_facts(client, admin_token, "grouped", "grouped.example.com", {})
+    await _host_with_facts(client, admin_token, "ungrouped", "ungrouped.example.com", {})
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+
+    r = await client.get("/hosts/rows", params={"group": "global"})
+    assert "grouped.example.com" in r.text
+    assert "ungrouped.example.com" in r.text
