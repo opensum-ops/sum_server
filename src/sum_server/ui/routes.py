@@ -1022,8 +1022,8 @@ async def _require_host_write_ui(
 async def groups_page(request: Request, session: SessionDep, user: UiUser) -> HTMLResponse:
     from sqlalchemy import func
 
-    from sum_server.groups.models import Group, GroupParameter, host_groups
-    from sum_server.groups.service import list_groups
+    from sum_server.groups.models import Group, GroupParameter
+    from sum_server.groups.service import effective_member_counts, list_groups
 
     assert user.id is not None
     groups = await list_groups(session)
@@ -1031,15 +1031,9 @@ async def groups_page(request: Request, session: SessionDep, user: UiUser) -> HT
     for g in groups:
         children.setdefault(g.parent_id, []).append(g)
 
-    member_counts: dict[uuid.UUID, int] = dict(
-        (
-            await session.execute(
-                select(host_groups.c.group_id, func.count()).group_by(host_groups.c.group_id)
-            )
-        )
-        .tuples()
-        .all()
-    )
+    # Effective, not direct: a host in `kubeworkers` is in `kube` too, exactly
+    # as it already inherits `kube`'s parameters. See groups/resolution.py.
+    member_counts = await effective_member_counts(session)
     param_counts: dict[uuid.UUID, int] = dict(
         (
             await session.execute(
@@ -1110,10 +1104,10 @@ async def group_detail_page(
     from sqlalchemy import select as sa_select
 
     from sum_server.groups.service import (
+        effective_membership_sources,
         get_group,
         list_group_parameters,
         list_groups,
-        list_member_host_ids,
     )
     from sum_server.hosts.models import Host
 
@@ -1125,20 +1119,31 @@ async def group_detail_page(
     parent = next((g for g in groups if g.id == group.parent_id), None)
     children = [g for g in groups if g.parent_id == group.id]
     params = await list_group_parameters(session, group_id=group_id)
-    member_ids = await list_member_host_ids(session, group_id=group_id)
-    members = (
+    # Effective membership, with the group each host actually joined, so the
+    # page can say why an inherited host is listed and offer Remove only where
+    # removing means something.
+    sources = await effective_membership_sources(session, group_id=group_id)
+    hosts = (
         list(
             (
                 await session.execute(
-                    sa_select(Host).where(Host.id.in_(member_ids)).order_by(Host.hostname)
+                    sa_select(Host).where(Host.id.in_(sources)).order_by(Host.hostname)
                 )
             )
             .scalars()
             .all()
         )
-        if member_ids
+        if sources
         else []
     )
+    members = [
+        {
+            "host": h,
+            "direct": any(g.id == group_id for g in sources[h.id]),
+            "sources": [g for g in sources[h.id] if g.id != group_id],
+        }
+        for h in hosts
+    ]
     # Valid reparent targets: anything outside this group's own subtree.
     subtree = {group.id}
     changed = True

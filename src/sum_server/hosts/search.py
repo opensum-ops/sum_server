@@ -86,12 +86,34 @@ def _apply_sql_filters(stmt: Select[tuple[Host]], search: HostSearch) -> Select[
         )
         stmt = stmt.where(fact_match.exists())
     if search.group:
-        member = (
-            select(host_groups.c.host_id)
-            .join(Group, Group.id == host_groups.c.group_id)
-            .where(host_groups.c.host_id == Host.id, Group.name == search.group)
+        # The subtree, not one group: a host in `kubeworkers` is in `kube`, the
+        # same containment parameter inheritance already assumes. A recursive
+        # CTE keeps this a single statement, which matters because this
+        # function has no session to go and load the tree with.
+        #
+        # The root is left unfiltered on purpose. Membership in it is implicit
+        # and never written to `host_groups`, so a subtree query would drop
+        # every host that is in no group at all.
+        roots = (
+            select(Group.id.label("id"))
+            .where(Group.name == search.group, Group.parent_id.is_not(None))
+            .cte("group_subtree", recursive=True)
         )
-        stmt = stmt.where(member.exists())
+        descendants = select(Group.id).join(roots, Group.parent_id == roots.c.id)
+        subtree = roots.union_all(descendants)
+        member = select(host_groups.c.host_id).where(
+            host_groups.c.host_id == Host.id,
+            host_groups.c.group_id.in_(select(subtree.c.id)),
+        )
+        stmt = stmt.where(
+            or_(
+                member.exists(),
+                # Named group is the root: every host matches.
+                select(Group.id)
+                .where(Group.name == search.group, Group.parent_id.is_(None))
+                .exists(),
+            )
+        )
     if search.component:
         like = f"%{search.component}%"
         comp = select(Component.id).where(

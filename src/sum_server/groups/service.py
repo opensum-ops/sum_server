@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sum_server.core.audit import write_audit
@@ -27,8 +27,10 @@ from sum_server.groups.resolution import (
     GroupNode,
     ancestor_chain,
     resolve_parameters,
+    subtree_ids,
 )
 from sum_server.history import service as history
+from sum_server.hosts.models import Host
 
 # --- Tree reads -------------------------------------------------------------
 
@@ -203,6 +205,98 @@ async def list_member_host_ids(session: AsyncSession, *, group_id: uuid.UUID) ->
         )
     ).scalars()
     return list(rows)
+
+
+async def list_effective_member_host_ids(
+    session: AsyncSession, *, group_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """Hosts in this group **or any group beneath it**.
+
+    What a person means by "what is in this group". Direct membership is still
+    what they edit; see :func:`list_member_host_ids` for that.
+    """
+    nodes = await _nodes_by_id(session)
+    node = nodes.get(group_id)
+    if node is None:
+        raise NotFoundError("group not found")
+    if node.parent_id is None:
+        # The root. Membership in it is implicit and never written to
+        # `host_groups`, so a subtree query would miss every host that is in no
+        # group at all.
+        return list((await session.execute(select(Host.id))).scalars().all())
+    rows = (
+        await session.execute(
+            select(host_groups.c.host_id)
+            .where(host_groups.c.group_id.in_(subtree_ids(group_id, nodes)))
+            .distinct()
+        )
+    ).scalars()
+    return list(rows)
+
+
+async def effective_member_counts(session: AsyncSession) -> dict[uuid.UUID, int]:
+    """Effective member count for every group, in a fixed number of queries.
+
+    The membership pairs are counted in Python rather than per group in SQL: a
+    host in two subgroups of the same parent must count once there, which a
+    per-group ``COUNT`` cannot see without one query per group.
+    """
+    nodes = await _nodes_by_id(session)
+    pairs = (
+        (await session.execute(select(host_groups.c.group_id, host_groups.c.host_id)))
+        .tuples()
+        .all()
+    )
+    direct: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for group_id, host_id in pairs:
+        direct.setdefault(group_id, set()).add(host_id)
+
+    total_hosts = (await session.execute(select(func.count()).select_from(Host))).scalar_one()
+
+    counts: dict[uuid.UUID, int] = {}
+    for node in nodes.values():
+        if node.parent_id is None:
+            counts[node.id] = total_hosts
+            continue
+        members: set[uuid.UUID] = set()
+        for gid in subtree_ids(node.id, nodes):
+            members |= direct.get(gid, set())
+        counts[node.id] = len(members)
+    return counts
+
+
+async def effective_membership_sources(
+    session: AsyncSession, *, group_id: uuid.UUID
+) -> dict[uuid.UUID, list[Group]]:
+    """Each effective member, mapped to the groups in this subtree it is in.
+
+    The group page needs to say *why* a host is listed: a direct member shows
+    the group itself, an inherited one shows the subgroup it actually joined,
+    and a host in two subgroups shows both. Under the root, a host in no group
+    at all maps to an empty list, which is exactly its story.
+    """
+    nodes = await _nodes_by_id(session)
+    node = nodes.get(group_id)
+    if node is None:
+        raise NotFoundError("group not found")
+    wanted = subtree_ids(group_id, nodes)
+
+    stmt = select(host_groups.c.host_id, Group).join(Group, Group.id == host_groups.c.group_id)
+    if node.parent_id is not None:
+        stmt = stmt.where(host_groups.c.group_id.in_(wanted))
+    else:
+        # Every host is an implicit member of the root, including hosts in no
+        # group, so membership is seeded from the host table rather than the
+        # join table.
+        stmt = stmt.where(host_groups.c.group_id.in_(wanted - {group_id}))
+
+    sources: dict[uuid.UUID, list[Group]] = {}
+    if node.parent_id is None:
+        for host_id in (await session.execute(select(Host.id))).scalars().all():
+            sources[host_id] = []
+    for host_id, group in (await session.execute(stmt.order_by(Group.name))).tuples().all():
+        sources.setdefault(host_id, []).append(group)
+    return sources
 
 
 async def list_groups_for_host(session: AsyncSession, *, host_id: uuid.UUID) -> list[Group]:

@@ -104,9 +104,18 @@ async def list_members(
     group_id: uuid.UUID,
     _admin: AdminActor,
     session: SessionDep,
+    include_descendants: bool = False,
 ) -> list[uuid.UUID]:
+    """Direct members by default; the whole subtree when asked.
+
+    Direct membership stays the default because it is what the add and remove
+    endpoints act on, and changing what an existing response means would break
+    a caller that had no say in it.
+    """
     if await svc.get_group(session, group_id) is None:
         raise NotFoundError("group not found")
+    if include_descendants:
+        return await svc.list_effective_member_host_ids(session, group_id=group_id)
     return await svc.list_member_host_ids(session, group_id=group_id)
 
 

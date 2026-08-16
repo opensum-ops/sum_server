@@ -55,6 +55,32 @@ def ancestor_chain(
     return chain
 
 
+def subtree_ids(group_id: uuid.UUID, groups_by_id: Mapping[uuid.UUID, GroupNode]) -> set[uuid.UUID]:
+    """``group_id`` and every group beneath it.
+
+    The mirror of :func:`ancestor_chain`, and the definition of *effective
+    membership*: a host in a subgroup is in the parent too, exactly as it
+    already inherits the parent's parameters. Direct membership is what an
+    operator edits; this is what they read.
+    """
+    children: dict[uuid.UUID | None, list[uuid.UUID]] = {}
+    for node in groups_by_id.values():
+        children.setdefault(node.parent_id, []).append(node.id)
+
+    found: set[uuid.UUID] = set()
+    stack = [group_id]
+    while stack:
+        current = stack.pop()
+        # A cycle cannot be reached through the write paths, which reject
+        # reparenting under one's own descendant. Guarding anyway keeps a
+        # corrupt tree from hanging a page render.
+        if current in found:
+            continue
+        found.add(current)
+        stack.extend(children.get(current, ()))
+    return found
+
+
 def depth_of(group_id: uuid.UUID, groups_by_id: Mapping[uuid.UUID, GroupNode]) -> int:
     return len(ancestor_chain(group_id, groups_by_id)) - 1
 
