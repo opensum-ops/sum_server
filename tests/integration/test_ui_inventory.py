@@ -223,6 +223,21 @@ async def test_group_update_form(client: AsyncClient, admin_token: str) -> None:
     assert "after" in detail.text
 
 
+async def test_host_rows_are_clickable_end_to_end(client: AsyncClient, admin_token: str) -> None:
+    """The whole row navigates, not just the hostname."""
+    host_id = await _mk_host(client, admin_token, "clickable-node")
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+
+    page = await client.get("/hosts")
+    assert f'data-row-href="/hosts/{host_id}"' in page.text
+    # The name stays a real anchor, so keyboard and no-JavaScript still work.
+    assert f'<a href="/hosts/{host_id}">' in page.text
+
+    # The live-search swap renders the same partial, so it must carry it too.
+    rows = await client.get("/hosts/rows")
+    assert f'data-row-href="/hosts/{host_id}"' in rows.text
+
+
 # --- Host pane restructure ---------------------------------------------------
 
 

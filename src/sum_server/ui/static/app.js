@@ -2,7 +2,9 @@
  *
  * Two things live here:
  *   1. the host search bar (token chips + suggestion menu keyboard handling);
- *   2. the copy-to-clipboard buttons on the enrollment page.
+ *   2. the copy-to-clipboard buttons on the enrollment page;
+ *   3. whole-row navigation on the host list;
+ *   4. the change-history popovers.
  *
  * The search bar is only an editor over the existing query params
  * (q, presence, group, component, and repeatable fact / param). It serializes
@@ -258,6 +260,47 @@
         pop.style.left = Math.max(margin, Math.min(left, window.innerWidth - p.width - margin)) + "px";
     }
 
+    /* Whole-row navigation on result tables.
+
+       The row's own anchor stays the keyboard and no-JavaScript path; this
+       only widens the click target to the rest of the row. Delegated from the
+       document because HTMX swaps these rows out from under any listener
+       bound to them. */
+    function rowLinkTarget(ev) {
+        var el = ev.target;
+        if (!el || !el.closest) return null;
+        var row = el.closest("tr[data-row-href]");
+        if (!row) return null;
+        /* A click on something that already does its own thing is that
+           thing's click, not the row's. */
+        if (el.closest("a, button, input, select, textarea, label")) return null;
+        /* Finishing a text selection inside the row is not a click on it. */
+        var sel = window.getSelection();
+        if (sel && !sel.isCollapsed && row.contains(sel.anchorNode)) return null;
+        return row.dataset.rowHref;
+    }
+
+    function initRowLinks() {
+        document.addEventListener("click", function (ev) {
+            var href = rowLinkTarget(ev);
+            if (!href) return;
+            if (ev.metaKey || ev.ctrlKey) {
+                window.open(href, "_blank", "noopener");
+            } else if (!ev.shiftKey) {
+                window.location.assign(href);
+            }
+        });
+
+        /* Middle-click opens a background tab, the way it would on a link. */
+        document.addEventListener("auxclick", function (ev) {
+            if (ev.button !== 1) return;
+            var href = rowLinkTarget(ev);
+            if (!href) return;
+            ev.preventDefault();
+            window.open(href, "_blank", "noopener");
+        });
+    }
+
     function initHistory() {
         document.addEventListener("click", function (ev) {
             var btn = ev.target.closest("[data-hist-toggle]");
@@ -297,6 +340,7 @@
         var bar = document.querySelector("[data-searchbar]");
         if (bar) initSearchBar(bar);
         initCopyButtons();
+        initRowLinks();
         initHistory();
     });
 })();
