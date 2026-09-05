@@ -14,7 +14,7 @@
     </thead>
     <tbody>
         {% for r in results %}
-        <tr class="row-link">
+        <tr class="row-link" data-row-href="/hosts/{{ r.host.id }}">
             <td>
                 <a href="/hosts/{{ r.host.id }}">{{ r.host.hostname }}</a>
             </td>
