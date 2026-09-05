@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% from "_macros.html" import setting_row, setting_row_raw, history_control, history_pane %}
+{% from "_macros.html" import setting_row, setting_row_raw, history_control, history_pane,
+    sub_row, sub_field, sub_field_raw %}
 {% block title %}{{ host.hostname }} — OpenSUM{% endblock %}
 {% block crumb %}<a href="/hosts">Hosts</a> / {{ host.hostname }}{% endblock %}
 
@@ -233,7 +234,7 @@
     </div>
     <div class="table-wrap">
         <table class="table">
-            <thead><tr><th>Key</th><th>Value</th><th class="num">History</th><th class="adv-col">First seen</th><th class="adv-col">Last seen</th></tr></thead>
+            <thead><tr><th>Key</th><th>Value</th><th class="num">History</th></tr></thead>
             <tbody>
                 {% for f in facts %}
                 <tr>
@@ -241,9 +242,11 @@
                     <td class="mono">{{ f.value | tojson if f.value is not string else f.value }}</td>
                     <td class="num">{{ history_control({"host_id": host.id, "scope": "fact",
                         "field": f.key, "count": hist_fact.get(f.key, 0)}) }}</td>
-                    <td class="muted adv-col">{{ f.first_seen.strftime("%Y-%m-%d %H:%M") }}</td>
-                    <td class="muted adv-col">{{ f.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
+                {% call sub_row(3) %}
+                    {{ sub_field("First seen", f.first_seen.strftime("%Y-%m-%d %H:%M"), mono=true) }}
+                    {{ sub_field("Last seen", f.last_seen.strftime("%Y-%m-%d %H:%M"), mono=true) }}
+                {% endcall %}
                 {% else %}
                 <tr class="empty-row"><td colspan="3">No facts reported yet.</td></tr>
                 {% endfor %}
@@ -271,7 +274,6 @@
                 <tr>
                     <th>Device</th><th>Vendor</th><th>Model</th><th class="num">Size</th><th>Bus</th>
                     <th class="num">History</th>
-                    <th class="adv-col">Serial</th><th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
             <tbody>
@@ -285,10 +287,12 @@
                     <td class="num">{{ history_control({"host_id": host.id, "scope": "component",
                         "subject_id": c.id, "label": c.slot or c.serial or c.model or "disk",
                         "count": hist_subject.get(c.id, 0)}) }}</td>
-                    <td class="mono adv-col">{{ c.serial or "—" }}</td>
-                    <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
-                    <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
+                {% call sub_row(6) %}
+                    {{ sub_field("Serial", c.serial, mono=true) }}
+                    {% call sub_field_raw("Present") %}<span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}{% endcall %}
+                    {{ sub_field("Last seen", c.last_seen.strftime("%Y-%m-%d %H:%M"), mono=true) }}
+                {% endcall %}
                 {% else %}
                 <tr class="empty-row"><td colspan="6">No disks reported.</td></tr>
                 {% endfor %}
@@ -329,7 +333,6 @@
                 <tr>
                     <th>Interface</th><th>MAC</th><th class="num">Speed</th><th>Driver</th>
                     <th class="num">History</th>
-                    <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
             <tbody>
@@ -342,9 +345,11 @@
                     <td class="num">{{ history_control({"host_id": host.id, "scope": "component",
                         "subject_id": c.id, "label": c.slot or c.model or "nic",
                         "count": hist_subject.get(c.id, 0)}) }}</td>
-                    <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
-                    <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
+                {% call sub_row(5) %}
+                    {% call sub_field_raw("Present") %}<span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}{% endcall %}
+                    {{ sub_field("Last seen", c.last_seen.strftime("%Y-%m-%d %H:%M"), mono=true) }}
+                {% endcall %}
                 {% else %}
                 <tr class="empty-row"><td colspan="5">No network interfaces reported.</td></tr>
                 {% endfor %}
@@ -372,7 +377,6 @@
                 <tr>
                     <th>Vendor</th><th>Model</th><th class="num">Cores</th><th class="num">Threads</th><th class="num">Base clock</th>
                     <th class="num">History</th>
-                    <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
             <tbody>
@@ -386,9 +390,11 @@
                     <td class="num">{{ history_control({"host_id": host.id, "scope": "component",
                         "subject_id": c.id, "label": c.model or c.vendor or "cpu",
                         "count": hist_subject.get(c.id, 0)}) }}</td>
-                    <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
-                    <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
+                {% call sub_row(6) %}
+                    {% call sub_field_raw("Present") %}<span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}{% endcall %}
+                    {{ sub_field("Last seen", c.last_seen.strftime("%Y-%m-%d %H:%M"), mono=true) }}
+                {% endcall %}
                 {% else %}
                 <tr class="empty-row"><td colspan="6">No CPUs reported.</td></tr>
                 {% endfor %}
@@ -416,7 +422,6 @@
                 <tr>
                     <th>Slot</th><th class="num">Size</th><th class="num">Speed</th><th>Form factor</th>
                     <th class="num">History</th>
-                    <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
             <tbody>
@@ -429,9 +434,11 @@
                     <td class="num">{{ history_control({"host_id": host.id, "scope": "component",
                         "subject_id": c.id, "label": c.slot or c.model or "memory",
                         "count": hist_subject.get(c.id, 0)}) }}</td>
-                    <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
-                    <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
+                {% call sub_row(5) %}
+                    {% call sub_field_raw("Present") %}<span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}{% endcall %}
+                    {{ sub_field("Last seen", c.last_seen.strftime("%Y-%m-%d %H:%M"), mono=true) }}
+                {% endcall %}
                 {% else %}
                 <tr class="empty-row"><td colspan="5">No memory reported.</td></tr>
                 {% endfor %}
@@ -459,7 +466,6 @@
                 <tr>
                     <th>Vendor</th><th>Model</th><th class="num">VRAM</th><th>Driver</th>
                     <th class="num">History</th>
-                    <th class="adv-col">Present</th><th class="adv-col">Last seen</th>
                 </tr>
             </thead>
             <tbody>
@@ -472,9 +478,11 @@
                     <td class="num">{{ history_control({"host_id": host.id, "scope": "component",
                         "subject_id": c.id, "label": c.model or c.vendor or "gpu",
                         "count": hist_subject.get(c.id, 0)}) }}</td>
-                    <td class="adv-col"><span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}</td>
-                    <td class="muted adv-col">{{ c.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
                 </tr>
+                {% call sub_row(5) %}
+                    {% call sub_field_raw("Present") %}<span class="dot {{ 'dot-green' if c.present else 'dot-dim' }}"></span>{{ "yes" if c.present else "absent" }}{% endcall %}
+                    {{ sub_field("Last seen", c.last_seen.strftime("%Y-%m-%d %H:%M"), mono=true) }}
+                {% endcall %}
                 {% else %}
                 <tr class="empty-row"><td colspan="5">No GPUs reported.</td></tr>
                 {% endfor %}
@@ -560,20 +568,22 @@
     <div class="card-header"><span class="card-title">Effective parameters</span></div>
     <div class="table-wrap">
         <table class="table">
-            <thead><tr><th>Key</th><th>Value</th><th class="adv-col">Source</th></tr></thead>
+            <thead><tr><th>Key</th><th>Value</th></tr></thead>
             <tbody>
                 {% for p in effective_params %}
                 <tr>
                     <td class="mono">{{ p.key }}</td>
                     <td class="mono">{{ p.value | tojson }}</td>
-                    <td class="adv-col">
+                </tr>
+                {% call sub_row(2) %}
+                    {% call sub_field_raw("Source") %}
                         {% if p.source_kind == "host" %}
                         <span class="pill pill-online">this host</span>
                         {% else %}
-                        <span class="muted">group:</span> {{ p.source_name }}
+                        group: {{ p.source_name }}
                         {% endif %}
-                    </td>
-                </tr>
+                    {% endcall %}
+                {% endcall %}
                 {% else %}
                 <tr class="empty-row"><td colspan="2">No parameters apply to this host.</td></tr>
                 {% endfor %}
