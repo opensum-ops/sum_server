@@ -66,6 +66,32 @@
 </details>
 {% endmacro %}
 
+{# Supportive detail for a table row: a dimmed second row underneath it rather
+   than extra columns on the row itself. Extra columns reflow and squeeze the
+   primary ones the moment the card's disclosure opens, so the data the reader
+   came for moves out from under them; a sub-row leaves the table's shape
+   alone. Hidden with the rest of the advanced data until that disclosure is
+   opened (see .adv-sub in app.css). `colspan` is the count of always-visible
+   columns in the table. #}
+{% macro sub_row(colspan) %}
+<tr class="adv-sub">
+    <td colspan="{{ colspan }}">{{ caller() }}</td>
+</tr>
+{% endmacro %}
+
+{% macro sub_field(label, value, mono=false) %}
+<span class="sub-field"><span class="sub-key">{{ label }}</span><span
+    class="sub-val{% if mono %} mono{% endif %}">
+    {{- value if value not in (none, "") else "—" -}}
+</span></span>
+{% endmacro %}
+
+{# Value is caller-rendered markup (a dot, a pill, a code block). #}
+{% macro sub_field_raw(label) %}
+<span class="sub-field"><span class="sub-key">{{ label }}</span><span
+    class="sub-val">{{ caller() }}</span></span>
+{% endmacro %}
+
 {% macro disclosure(summary) %}
 <details class="disclosure">
     <summary>{{ summary }}</summary>

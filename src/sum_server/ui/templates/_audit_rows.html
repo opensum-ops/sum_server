@@ -1,5 +1,7 @@
-{# Payload JSON is verbose; it rides in an .adv-col revealed by the card's
-   disclosure (see app.css) rather than crowding every row. #}
+{# Payload JSON is verbose; it rides in a sub-row revealed by the card's
+   disclosure (see app.css) rather than crowding every row. A sub-row also gets
+   it the table's full width, so it reads without truncation. #}
+{% from "_macros.html" import sub_row %}
 {% for e in entries %}
 <tr>
     <td class="muted mono">{{ e.ts.strftime("%Y-%m-%d %H:%M:%S") }}</td>
@@ -12,8 +14,8 @@
         {{ e.target_kind }}
         {% if e.target_id %}<span class="mono truncate" title="{{ e.target_id }}">{{ e.target_id }}</span>{% endif %}
     </td>
-    <td class="adv-col"><code class="truncate" title="{{ e.payload | tojson }}">{{ e.payload | tojson }}</code></td>
 </tr>
+{% call sub_row(4) %}<code class="sub-json">{{ e.payload | tojson }}</code>{% endcall %}
 {% else %}
 <tr class="empty-row"><td colspan="4">No audit entries match.</td></tr>
 {% endfor %}

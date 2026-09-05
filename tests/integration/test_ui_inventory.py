@@ -275,6 +275,82 @@ async def test_facts_have_their_own_pane(client: AsyncClient, admin_token: str) 
     assert "6.9.3" in facts.text
 
 
+async def test_supportive_data_rides_in_a_sub_row(client: AsyncClient, admin_token: str) -> None:
+    """Opening a card's disclosure adds a row, it does not add columns.
+
+    Extra columns reflowed the table under the reader; the detail now hangs off
+    each row as its own dimmed sub-row, so the primary columns never move.
+    """
+    host_id = await _mk_host(client, admin_token, "subrow-node")
+    agent = await _agent_for(client, admin_token, host_id)
+    ing = await client.post(
+        "/api/v1/agents/inventory",
+        headers=auth_h(agent),
+        json={
+            "facts": {"kernel": "6.9.3", "hostname": "subrow-node"},
+            "components": [
+                {
+                    "kind": "disk",
+                    "slot": "/dev/sda",
+                    "serial": "SN-SUBROW-1",
+                    "attrs": {"kind": "disk", "size_bytes": 512110190592, "bus": "sata"},
+                },
+                {
+                    "kind": "nic",
+                    "slot": "eth0",
+                    "attrs": {"kind": "nic", "mac": "aa:bb:cc:dd:ee:ff", "speed_mbps": 1000},
+                },
+                {
+                    "kind": "cpu",
+                    "model": "Test CPU",
+                    "attrs": {"kind": "cpu", "cores": 8, "threads": 16, "base_hz": 3400000000},
+                },
+                {
+                    "kind": "memory",
+                    "slot": "DIMM0",
+                    "attrs": {"kind": "memory", "size_bytes": 17179869184, "speed_mts": 3200},
+                },
+                {
+                    "kind": "gpu",
+                    "model": "Test GPU",
+                    "attrs": {"kind": "gpu", "vram_bytes": 8589934592},
+                },
+            ],
+        },
+    )
+    assert ing.status_code == 200, ing.text
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+
+    for tab in ("overview", "facts", "storage", "network", "cpu", "memory", "gpu", "groups"):
+        r = await client.get(f"/hosts/{host_id}", params={"tab": tab})
+        assert r.status_code == 200, tab
+        # The old mechanism is gone everywhere, not just where it was noticed.
+        assert "adv-col" not in r.text, tab
+        # Groups has no parameters on a bare host, so it has no rows to hang a
+        # sub-row off; every other table pane does.
+        if tab not in ("overview", "groups"):
+            assert 'class="adv-sub"' in r.text, tab
+
+    storage = await client.get(f"/hosts/{host_id}", params={"tab": "storage"})
+    serial_at = storage.text.index("SN-SUBROW-1")
+    # The serial is inside the sub-row that follows its disk, not in a cell of
+    # the disk's own row.
+    assert storage.text.rindex('class="adv-sub"', 0, serial_at) > storage.text.rindex(
+        "/dev/sda", 0, serial_at
+    )
+
+
+async def test_audit_payload_rides_in_a_sub_row(client: AsyncClient, admin_token: str) -> None:
+    await _mk_host(client, admin_token, "audit-subrow-node")
+    await _ui_login(client, "admin@example.com", "admin-pw-1234")
+
+    r = await client.get("/audit")
+    assert r.status_code == 200
+    assert 'class="adv-sub"' in r.text
+    assert "sub-json" in r.text
+    assert "adv-col" not in r.text
+
+
 async def test_description_is_editable(client: AsyncClient, admin_token: str) -> None:
     host_id = await _mk_host(client, admin_token, "desc-node")
     await _ui_login(client, "admin@example.com", "admin-pw-1234")
