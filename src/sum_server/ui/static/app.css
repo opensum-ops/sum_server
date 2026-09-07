@@ -359,7 +359,13 @@ code, .mono {
     background: var(--row-hover);
 }
 
-/* Whole-row link targets (host list): the row fills, the text brightens. */
+/* Whole-row link targets (host list): the row fills, the text brightens.
+   The row is clickable anywhere (see initRowLinks in app.js); the name stays a
+   real link so keyboard, middle-click, and no-JS all still work. */
+.table tbody tr.row-link {
+    cursor: pointer;
+}
+
 .table tbody tr.row-link:hover td,
 .table tbody tr.row-link:focus-within td {
     background: var(--select-fill);
